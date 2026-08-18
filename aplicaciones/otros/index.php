@@ -448,6 +448,20 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
                 </div>
                 <i class="fas fa-arrow-right app-arrow"></i>
             </div>
+            <!-- Registro de Asistencia -->
+            <div class="app-card" 
+                data-url="https://script.google.com/macros/s/AKfycbwfE2YPSgLpvr0n1RHgBCFxmrj_kV_69GMc16_xjAHok1S1DONa8qcxdX74ap-7iGHo/exec" 
+                data-name="Registro de Asistencia" 
+                data-requiere-login="false">
+                <div class="app-icon">
+                    <i class="fas fa-clipboard-check"></i>
+                </div>
+                <div class="app-info">
+                    <h3 class="app-name">Registro de Asistencia</h3>
+                    <p class="app-description">Control de asistencia en reuniones</p>
+                </div>
+                <i class="fas fa-arrow-right app-arrow"></i>
+            </div>
         </div>
     </div>
 </main>
