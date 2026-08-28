@@ -450,7 +450,7 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
             </div>
             <!-- Registro de Asistencia -->
             <div class="app-card" 
-                data-url="https://script.google.com/macros/s/AKfycbwfE2YPSgLpvr0n1RHgBCFxmrj_kV_69GMc16_xjAHok1S1DONa8qcxdX74ap-7iGHo/exec" 
+                data-url="https://script.google.com/macros/s/AKfycbxxHKyk8PSrrNkfIog68vHvGvGPoz7xUoa8u8ynIARRCevnoVCHQTJ1dA-9ojx-tlTm/exec" 
                 data-name="Registro de Asistencia" 
                 data-requiere-login="false">
                 <div class="app-icon">
@@ -459,6 +459,20 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
                 <div class="app-info">
                     <h3 class="app-name">Registro de Asistencia</h3>
                     <p class="app-description">Control de asistencia en reuniones</p>
+                </div>
+                <i class="fas fa-arrow-right app-arrow"></i>
+            </div>
+            <!-- Solicitud de Permisos -->
+            <div class="app-card" 
+                data-url="solicitud_permisos/index.php" 
+                data-name="Solicitud de Permisos" 
+                data-requiere-login="false">
+                <div class="app-icon">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <div class="app-info">
+                    <h3 class="app-name">Solicitud de Permisos</h3>
+                    <p class="app-description">Gestión de solicitudes de permisos</p>
                 </div>
                 <i class="fas fa-arrow-right app-arrow"></i>
             </div>

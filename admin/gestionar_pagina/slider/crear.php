@@ -267,7 +267,7 @@ $sugerir_orden = $max_orden + 1;
                 <img src="../../../uploads/logo/30-años-blanco.webp" alt="logo intranet" style="display: flex; width: 130px;">
                 <small style="color: #8aa8b8;">| Crear Slide</small>
             </div>
-            <a href="../index.php" class="btn-volver">
+            <a href="index.php" class="btn-volver">
                 <i class="fas fa-arrow-left"></i> Volver
             </a>
         </div>

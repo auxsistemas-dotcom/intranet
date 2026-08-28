@@ -39,14 +39,15 @@ if ($rol_usuario == 2) {
 
 // Definir los módulos del panel admin
 $modulos_admin = [
-    ['url' => 'gestionar_pagina/index.php', 'icono' => 'fa-images', 'nombre' => 'Gestionar Pagina', 'modulo' => 'gestionar_pagina'],
-    ['url' => 'usuarios/index.php', 'icono' => 'fa-users', 'nombre' => 'Gestionar Usuarios', 'modulo' => 'usuarios'],
-    ['url' => 'permisos/index.php', 'icono' => 'fa-lock', 'nombre' => 'Permisos', 'modulo' => 'permisos'],
-    ['url' => 'capacitaciones/index.php', 'icono' => 'fa-folder-open', 'nombre' => 'Capacitaciones', 'modulo' => 'capacitaciones'],
-    ['url' => 'politicas/index.php', 'icono' => 'fa-gavel', 'nombre' => 'Políticas', 'modulo' => 'politicas'],
-    ['url' => 'documentos_sig/index.php', 'icono' => 'fa-file-alt', 'nombre' => 'Documentos SIG', 'modulo' => 'documentos_sig'],
-    ['url' => 'logistica/index.php', 'icono' => 'fa-map-marked-alt', 'nombre' => 'Logística', 'modulo' => 'logistica'],
-    ['url' => 'gestion_humana/index.php', 'icono' => 'fa-users-cog', 'nombre' => 'Gestión Humana', 'modulo' => 'gestion_humana'],
+    ['url' => 'gestionar_pagina/index.php', 'icono' => 'fa-images', 'nombre' => 'Gestionar Pagina', 'modulo' => 'Gestionar Pagina'],
+    ['url' => 'usuarios/index.php', 'icono' => 'fa-users', 'nombre' => 'Gestionar Usuarios', 'modulo' => 'Usuarios'],
+    ['url' => 'permisos/index.php', 'icono' => 'fa-lock', 'nombre' => 'Permisos', 'modulo' => 'Permisos'],
+    ['url' => 'capacitaciones/index.php', 'icono' => 'fa-folder-open', 'nombre' => 'Capacitaciones', 'modulo' => 'Capacitaciones'],
+    ['url' => 'politicas/index.php', 'icono' => 'fa-gavel', 'nombre' => 'Políticas', 'modulo' => 'Politicas'],
+    ['url' => 'documentos_sig/index.php', 'icono' => 'fa-file-alt', 'nombre' => 'Documentos SIG', 'modulo' => 'Documentos SIG'],
+    ['url' => 'logistica/index.php', 'icono' => 'fa-map-marked-alt', 'nombre' => 'Logística', 'modulo' => 'Logistica'],
+    ['url' => 'gestion_humana/index.php', 'icono' => 'fa-users-cog', 'nombre' => 'Gestión Humana', 'modulo' => 'Gestion Humana'],
+    ['url' => 'gestion_permisos/index.php', 'icono' => 'fa-calendar-check', 'nombre' => 'Gestión de Permisos', 'modulo' => 'Gestion Permisos'],
 ];
 
 // Obtener estadísticas
@@ -315,15 +316,6 @@ $slidesActivos = $pdo->query("SELECT COUNT(*) FROM slider WHERE activo = 1")->fe
                     <?php endif; ?>
                 <?php endforeach; ?>
             </div>
-            
-            <?php if ($rol_usuario == 2): ?>
-                <div style="margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #f39c12;">
-                    <i class="fas fa-info-circle" style="color: #f39c12;"></i>
-                    <span style="font-size: 13px; color: #856404;">
-                        <strong>Supervisor:</strong> Solo ves los módulos que el administrador te ha asignado.
-                    </span>
-                </div>
-            <?php endif; ?>
         </div>
     </div>
 </body>

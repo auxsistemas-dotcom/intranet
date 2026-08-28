@@ -21,27 +21,7 @@ if ($rol_usuario != 1) {
 $mensaje = '';
 $error = '';
 
-// Mostrar SOLO supervisores (rol_id = 2)
-$sql = "SELECT u.*, r.nombre as rol_nombre 
-        FROM usuarios u
-        LEFT JOIN roles r ON u.rol_id = r.id
-        WHERE u.rol_id = 2
-        ORDER BY u.nombre_completo ASC";
-
-$usuarios = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-
-// Contar módulos asignados a cada supervisor (CORREGIDO - SIN REFERENCIA)
-foreach ($usuarios as $index => $usuario) {
-    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM permisos_usuarios WHERE usuario_id = ?");
-    $stmt->execute([$usuario['id']]);
-    $total = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-    $usuarios[$index]['total_modulos'] = $total;
-}
-
-// Verificar si hay supervisores
-$no_supervisores = empty($usuarios);
-
-// Obtener mensajes de sesión
+// Recuperar mensajes de sesión
 if (isset($_SESSION['mensaje'])) {
     $mensaje = $_SESSION['mensaje'];
     unset($_SESSION['mensaje']);
@@ -50,6 +30,72 @@ if (isset($_SESSION['error'])) {
     $error = $_SESSION['error'];
     unset($_SESSION['error']);
 }
+
+// ============================================
+// ✅ PAGINACIÓN DE SUPERVISORES
+// ============================================
+
+$busqueda = isset($_GET['buscar']) ? trim($_GET['buscar']) : '';
+$pagina = isset($_GET['pagina']) ? intval($_GET['pagina']) : 1;
+$registros_por_pagina = 7;
+$offset = ($pagina - 1) * $registros_por_pagina;
+
+// Contar total de supervisores
+if (!empty($busqueda)) {
+    $sql_count = "SELECT COUNT(*) as total 
+                  FROM usuarios u
+                  WHERE u.rol_id = 2 
+                  AND (u.nombre_completo LIKE :busqueda 
+                     OR u.usuario LIKE :busqueda)";
+    $stmt_count = $pdo->prepare($sql_count);
+    $stmt_count->execute(['busqueda' => '%' . $busqueda . '%']);
+} else {
+    $sql_count = "SELECT COUNT(*) as total FROM usuarios WHERE rol_id = 2";
+    $stmt_count = $pdo->prepare($sql_count);
+    $stmt_count->execute();
+}
+$total_registros = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+// Obtener supervisores con paginación
+if (!empty($busqueda)) {
+    $sql = "SELECT u.*, r.nombre as rol_nombre 
+            FROM usuarios u
+            LEFT JOIN roles r ON u.rol_id = r.id
+            WHERE u.rol_id = 2 
+            AND (u.nombre_completo LIKE :busqueda 
+               OR u.usuario LIKE :busqueda)
+            ORDER BY u.nombre_completo ASC
+            LIMIT :offset, :registros_por_pagina";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':busqueda', '%' . $busqueda . '%');
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->bindValue(':registros_por_pagina', $registros_por_pagina, PDO::PARAM_INT);
+    $stmt->execute();
+} else {
+    $sql = "SELECT u.*, r.nombre as rol_nombre 
+            FROM usuarios u
+            LEFT JOIN roles r ON u.rol_id = r.id
+            WHERE u.rol_id = 2
+            ORDER BY u.nombre_completo ASC
+            LIMIT :offset, :registros_por_pagina";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->bindValue(':registros_por_pagina', $registros_por_pagina, PDO::PARAM_INT);
+    $stmt->execute();
+}
+$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Contar módulos asignados a cada supervisor
+foreach ($usuarios as $index => $usuario) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM permisos_usuarios WHERE usuario_id = ?");
+    $stmt->execute([$usuario['id']]);
+    $total = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    $usuarios[$index]['total_modulos'] = $total;
+}
+
+// Verificar si hay supervisores
+$no_supervisores = empty($usuarios) && $total_registros == 0;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -68,7 +114,7 @@ if (isset($_SESSION['error'])) {
         
         body {
             font-family: 'Poppins', sans-serif;
-            background: #f0f2f5;
+            background: #d3d3d3;
             color: #2c3e50;
         }
         
@@ -108,29 +154,26 @@ if (isset($_SESSION['error'])) {
         }
         
         .btn-volver {
-            background: rgba(255,255,255,0.1);
+            background: #445960;
             color: white;
-            padding: 8px 18px;
+            padding: 7px 14px;
             text-decoration: none;
             border-radius: 8px;
             transition: all 0.3s ease;
-            border: 1px solid rgba(255,255,255,0.2);
-            font-size: 14px;
         }
         
         .btn-volver:hover {
             background: #ffc107;
             color: #12232b;
             transform: translateY(-2px);
-            border-color: #ffc107;
         }
         
         /* ========== CARD ========== */
         .card {
             background: white;
-            border-radius: 16px;
-            padding: 30px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .header-actions {
@@ -149,11 +192,13 @@ if (isset($_SESSION['error'])) {
         }
         
         .header-actions .left h2 {
-            font-size: 22px;
+            font-size: 20px;
             color: #12232b;
             display: flex;
             align-items: center;
             gap: 10px;
+            border-left: 4px solid #173742;
+            padding-left: 15px;
         }
         
         .header-actions .left h2 i {
@@ -194,27 +239,6 @@ if (isset($_SESSION['error'])) {
         }
         
         /* ========== BOTONES ========== */
-        .btn-crear {
-            background: linear-gradient(135deg, #27ae60, #219a52);
-            color: white;
-            padding: 10px 22px;
-            text-decoration: none;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .btn-crear:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(39,174,96,0.3);
-        }
-        
         .btn-asignar {
             background: #173742;
             color: white;
@@ -234,11 +258,79 @@ if (isset($_SESSION['error'])) {
         .btn-asignar:hover {
             background: #445960;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(23,55,66,0.3);
         }
         
         .btn-asignar i {
             font-size: 12px;
+        }
+        
+        /* ========== BUSCADOR ========== */
+        .buscador-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .buscador-container form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex: 1;
+            flex-wrap: wrap;
+        }
+        .buscador-container input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 15px;
+            border: 1px solid #d3d3d3;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .buscador-container input[type="text"]:focus {
+            outline: none;
+            border-color: #173742;
+        }
+        .btn-buscar {
+            background: #173742;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        .btn-buscar:hover {
+            background: #445960;
+            transform: translateY(-2px);
+        }
+        .btn-limpiar {
+            background: #7f8c8d;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        .btn-limpiar:hover {
+            background: #e74c3c;
+            transform: translateY(-2px);
+        }
+        .resultado-busqueda {
+            font-size: 13px;
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+        .resultado-busqueda strong {
+            color: #12232b;
         }
         
         /* ========== TABLA ========== */
@@ -253,25 +345,16 @@ if (isset($_SESSION['error'])) {
         
         thead {
             background: #12232b;
-            border-radius: 10px 10px 0 0;
         }
         
         thead th {
             color: white;
-            padding: 14px 16px;
+            padding: 12px 16px;
             text-align: left;
             font-weight: 600;
             font-size: 13px;
             letter-spacing: 0.5px;
             text-transform: uppercase;
-        }
-        
-        thead th:first-child {
-            border-radius: 10px 0 0 0;
-        }
-        
-        thead th:last-child {
-            border-radius: 0 10px 0 0;
         }
         
         tbody tr {
@@ -284,41 +367,25 @@ if (isset($_SESSION['error'])) {
         }
         
         tbody td {
-            padding: 14px 16px;
+            padding: 12px 16px;
             vertical-align: middle;
             font-size: 14px;
         }
         
-        /* ========== BADGES MEJORADOS ========== */
+        /* ========== BADGES ========== */
         .badge {
-            padding: 6px 16px;
+            padding: 4px 12px;
             border-radius: 20px;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 600;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             white-space: nowrap;
-            transition: all 0.2s ease;
         }
         
         .badge-supervisor {
             background: #f39c12;
-            color: white;
-        }
-        
-        .badge-supervisor i {
-            background: #f39c12;
-            color: white;
-        }
-        
-        .badge-modulos {
-            background: #3498db;
-            color: white;
-        }
-        
-        .badge-modulos i {
-            background: #3498db;
             color: white;
         }
         
@@ -348,8 +415,12 @@ if (isset($_SESSION['error'])) {
         }
         
         .badge-modulos-bajo i {
-            background: #3498db;
             color: white;
+        }
+        
+        .badge-sin-modulos {
+            background: #ecf0f1;
+            color: #7f8c8d;
         }
         
         /* ========== FOOTER ========== */
@@ -380,19 +451,19 @@ if (isset($_SESSION['error'])) {
         /* ========== EMPTY STATE ========== */
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
+            padding: 40px 20px;
         }
         
         .empty-state i {
-            font-size: 64px;
+            font-size: 48px;
             color: #d3d3d3;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         
         .empty-state h3 {
             color: #2c3e50;
             margin-bottom: 10px;
-            font-size: 20px;
+            font-size: 18px;
         }
         
         .empty-state p {
@@ -400,12 +471,32 @@ if (isset($_SESSION['error'])) {
             margin-bottom: 20px;
         }
         
+        .btn-crear-supervisor {
+            background: #27ae60;
+            color: white;
+            padding: 10px 25px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-crear-supervisor:hover {
+            background: #219a52;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(39,174,96,0.3);
+        }
+        
         /* ========== MENSAJES ========== */
         .mensaje-exito {
             background: #d5f5e3;
             color: #1a7a3a;
-            padding: 14px 20px;
-            border-radius: 10px;
+            padding: 12px 18px;
+            border-radius: 8px;
             margin-bottom: 20px;
             border-left: 4px solid #27ae60;
             font-weight: 500;
@@ -419,8 +510,8 @@ if (isset($_SESSION['error'])) {
         .mensaje-error {
             background: #fadbd8;
             color: #922b21;
-            padding: 14px 20px;
-            border-radius: 10px;
+            padding: 12px 18px;
+            border-radius: 8px;
             margin-bottom: 20px;
             border-left: 4px solid #e74c3c;
             font-weight: 500;
@@ -431,8 +522,72 @@ if (isset($_SESSION['error'])) {
             color: #e74c3c;
         }
         
+        /* ============================================ */
+        /* ===== PAGINACIÓN ===== */
+        /* ============================================ */
+        .paginacion-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #d3d3d3;
+        }
+        .paginacion-info {
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+        .paginacion-info strong {
+            color: #12232b;
+        }
+        .paginacion {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .paginacion a, .paginacion .pagina-actual {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 12px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .paginacion a {
+            background: #f0f0f0;
+            color: #2c3e50;
+        }
+        .paginacion a:hover {
+            background: #173742;
+            color: white;
+            transform: translateY(-2px);
+        }
+        .paginacion .pagina-actual {
+            background: #173742;
+            color: white;
+        }
+        .paginacion .pagina-puntos {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            color: #7f8c8d;
+        }
+        
         /* ========== RESPONSIVE ========== */
         @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
             .header-actions {
                 flex-direction: column;
                 align-items: flex-start;
@@ -462,6 +617,24 @@ if (isset($_SESSION['error'])) {
                 font-size: 11px;
                 padding: 4px 12px;
             }
+            
+            .buscador-container form {
+                flex-direction: column;
+            }
+            .buscador-container input[type="text"] {
+                width: 100%;
+                min-width: auto;
+            }
+            .buscador-container .btn-buscar,
+            .buscador-container .btn-limpiar {
+                width: 100%;
+                text-align: center;
+            }
+            
+            .paginacion-container {
+                flex-direction: column;
+                align-items: center;
+            }
         }
         
         @media (max-width: 480px) {
@@ -482,10 +655,6 @@ if (isset($_SESSION['error'])) {
             .btn-asignar {
                 font-size: 10px;
                 padding: 4px 10px;
-            }
-            
-            .container {
-                padding: 10px;
             }
         }
     </style>
@@ -526,7 +695,7 @@ if (isset($_SESSION['error'])) {
                         <i class="fas fa-user-tie"></i> 
                         Permisos de Supervisores
                         <span class="badge-total">
-                            <?php echo count($usuarios); ?>
+                            <?php echo $total_registros; ?>
                         </span>
                     </h2>
                 </div>
@@ -544,14 +713,45 @@ if (isset($_SESSION['error'])) {
                 </small>
             </div>
             
+            <!-- ===== BUSCADOR ===== -->
+            <div class="buscador-container">
+                <form method="GET" action="">
+                    <input type="text" name="buscar" placeholder="Buscar supervisor por nombre o usuario..." value="<?php echo htmlspecialchars($busqueda); ?>">
+                    <button type="submit" class="btn-buscar">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                    <?php if (!empty($busqueda)): ?>
+                        <a href="index.php" class="btn-limpiar">
+                            <i class="fas fa-times"></i> Limpiar
+                        </a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <?php if (!empty($busqueda) && count($usuarios) > 0): ?>
+                <div class="resultado-busqueda">
+                    <i class="fas fa-search"></i> Resultados para: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong>
+                    (<?php echo count($usuarios); ?> encontrados)
+                </div>
+            <?php endif; ?>
+            
             <!-- ===== TABLA ===== -->
-            <?php if ($no_supervisores): ?>
+            <?php if ($no_supervisores && empty($busqueda)): ?>
                 <div class="empty-state">
                     <i class="fas fa-users-slash"></i>
                     <h3>No hay supervisores registrados</h3>
                     <p>Crea un usuario con rol de <strong>Supervisor</strong> para comenzar a asignar permisos.</p>
-                    <a href="../usuarios/crear.php" class="btn-asignar" style="font-size: 14px; padding: 10px 25px;">
+                    <a href="../usuarios/crear.php" class="btn-crear-supervisor">
                         <i class="fas fa-user-plus"></i> Crear Supervisor
+                    </a>
+                </div>
+            <?php elseif (empty($usuarios) && !empty($busqueda)): ?>
+                <div class="empty-state">
+                    <i class="fas fa-search"></i>
+                    <h3>No se encontraron resultados</h3>
+                    <p>No hay supervisores que coincidan con: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong></p>
+                    <a href="index.php" class="btn-asignar" style="font-size: 14px; padding: 10px 25px;">
+                        <i class="fas fa-arrow-left"></i> Ver todos
                     </a>
                 </div>
             <?php else: ?>
@@ -569,17 +769,23 @@ if (isset($_SESSION['error'])) {
                         </thead>
                         <tbody>
                             <?php 
-                            $contador = 1;
+                            $contador = $offset + 1;
                             foreach ($usuarios as $usuario): 
-                                $total = $usuario['total_modulos'];
+                                $total = $usuario['total_modulos'] ?? 0;
                                 
                                 // Clase según cantidad de módulos
                                 if ($total >= 6) {
                                     $badge_modulos_class = 'badge-modulos-completo';
+                                    $badge_icon = 'fa-check-circle';
                                 } elseif ($total >= 3) {
                                     $badge_modulos_class = 'badge-modulos-medio';
-                                } else {
+                                    $badge_icon = 'fa-minus-circle';
+                                } elseif ($total > 0) {
                                     $badge_modulos_class = 'badge-modulos-bajo';
+                                    $badge_icon = 'fa-plus-circle';
+                                } else {
+                                    $badge_modulos_class = 'badge-sin-modulos';
+                                    $badge_icon = 'fa-ban';
                                 }
                             ?>
                                 <tr>
@@ -588,7 +794,7 @@ if (isset($_SESSION['error'])) {
                                         <strong><?php echo htmlspecialchars($usuario['nombre_completo']); ?></strong>
                                     </td>
                                     <td>
-                                        <code style="background: #f0f0f0; padding: 5px 7px; border-radius: 4px; font-size: 17px;">
+                                        <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-size: 13px;">
                                             <?php echo htmlspecialchars($usuario['usuario']); ?>
                                         </code>
                                     </td>
@@ -598,16 +804,10 @@ if (isset($_SESSION['error'])) {
                                         </span>
                                     </td>
                                     <td>
-                                        <?php if ($total == 0): ?>
-                                            <span style="color: #95a5a6; font-size: 13px;">
-                                                <i class="fas fa-ban"></i> Sin módulos asignados
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="badge <?php echo $badge_modulos_class; ?>">
-                                                <i class="fas fa-th-list"></i> 
-                                                <?php echo $total; ?> módulo<?php echo $total > 1 ? 's' : ''; ?>
-                                            </span>
-                                        <?php endif; ?>
+                                        <span class="badge <?php echo $badge_modulos_class; ?>">
+                                            <i class="fas <?php echo $badge_icon; ?>"></i> 
+                                            <?php echo $total; ?> módulo<?php echo $total != 1 ? 's' : ''; ?>
+                                        </span>
                                     </td>
                                     <td style="text-align: center;">
                                         <a href="asignar.php?id=<?php echo $usuario['id']; ?>" class="btn-asignar">
@@ -625,7 +825,10 @@ if (isset($_SESSION['error'])) {
                 <div class="card-footer">
                     <div class="info">
                         <i class="fas fa-info-circle"></i> 
-                        Total: <strong><?php echo count($usuarios); ?></strong> supervisores registrados
+                        Total: <strong><?php echo $total_registros; ?></strong> supervisores registrados
+                        <?php if (!empty($busqueda)): ?>
+                            | Resultados para: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong>
+                        <?php endif; ?>
                     </div>
                     <div class="info">
                         <i class="fas fa-th-list"></i> 
@@ -635,6 +838,77 @@ if (isset($_SESSION['error'])) {
                         <strong><?php echo $total_modulos_sistema; ?></strong> módulos disponibles en el sistema
                     </div>
                 </div>
+                
+                <!-- ===== PAGINACIÓN ===== -->
+                <?php if ($total_paginas > 1): ?>
+                <div class="paginacion-container">
+                    <div class="paginacion-info">
+                        <i class="fas fa-info-circle"></i> 
+                        Mostrando <strong><?php echo count($usuarios); ?></strong> de <strong><?php echo $total_registros; ?></strong> supervisores
+                        <?php if (!empty($busqueda)): ?>
+                            | Resultados para: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="paginacion">
+                        <!-- Primera página -->
+                        <?php if ($pagina > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => 1])); ?>" title="Primera página">
+                                <i class="fas fa-angle-double-left"></i>
+                            </a>
+                        <?php endif; ?>
+
+                        <!-- Anterior -->
+                        <?php if ($pagina > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina - 1])); ?>" title="Página anterior">
+                                <i class="fas fa-angle-left"></i>
+                            </a>
+                        <?php endif; ?>
+
+                        <!-- Páginas -->
+                        <?php
+                        $rango = 2;
+                        $inicio = max(1, $pagina - $rango);
+                        $fin = min($total_paginas, $pagina + $rango);
+
+                        if ($inicio > 1): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => 1])); ?>">1</a>
+                            <?php if ($inicio > 2): ?>
+                                <span class="pagina-puntos">…</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php for ($i = $inicio; $i <= $fin; $i++): ?>
+                            <?php if ($i == $pagina): ?>
+                                <span class="pagina-actual"><?php echo $i; ?></span>
+                            <?php else: ?>
+                                <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $i])); ?>"><?php echo $i; ?></a>
+                            <?php endif; ?>
+                        <?php endfor; ?>
+
+                        <?php if ($fin < $total_paginas): ?>
+                            <?php if ($fin < $total_paginas - 1): ?>
+                                <span class="pagina-puntos">…</span>
+                            <?php endif; ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $total_paginas])); ?>"><?php echo $total_paginas; ?></a>
+                        <?php endif; ?>
+
+                        <!-- Siguiente -->
+                        <?php if ($pagina < $total_paginas): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina + 1])); ?>" title="Página siguiente">
+                                <i class="fas fa-angle-right"></i>
+                            </a>
+                        <?php endif; ?>
+
+                        <!-- Última página -->
+                        <?php if ($pagina < $total_paginas): ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $total_paginas])); ?>" title="Última página">
+                                <i class="fas fa-angle-double-right"></i>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>

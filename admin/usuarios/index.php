@@ -34,7 +34,6 @@ if (isset($_SESSION['error'])) {
 if (isset($_GET['cambiar_estado']) && is_numeric($_GET['cambiar_estado'])) {
     $id = $_GET['cambiar_estado'];
     
-    // No permitir cambiar el estado del propio usuario
     if ($id == $_SESSION['usuario_id']) {
         $_SESSION['error'] = "❌ No puedes cambiar tu propio estado";
         header("Location: index.php");
@@ -53,7 +52,6 @@ if (isset($_GET['cambiar_estado']) && is_numeric($_GET['cambiar_estado'])) {
 if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
     $id = $_GET['eliminar'];
     
-    // No permitir eliminar el propio usuario
     if ($id != $_SESSION['usuario_id']) {
         $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = ?");
         $stmt->execute([$id]);
@@ -68,27 +66,57 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
 }
 
 // ============================================
-// ✅ BUSCADOR DE USUARIOS
+// ✅ PAGINACIÓN DE USUARIOS
 // ============================================
-$busqueda = isset($_GET['buscar']) ? trim($_GET['buscar']) : '';
 
+$busqueda = isset($_GET['buscar']) ? trim($_GET['buscar']) : '';
+$pagina = isset($_GET['pagina']) ? intval($_GET['pagina']) : 1;
+$registros_por_pagina = 7;
+$offset = ($pagina - 1) * $registros_por_pagina;
+
+// Contar total de usuarios
+if (!empty($busqueda)) {
+    $sql_count = "SELECT COUNT(*) as total 
+                  FROM usuarios u
+                  LEFT JOIN roles r ON u.rol_id = r.id
+                  WHERE u.nombre_completo LIKE :busqueda 
+                     OR u.usuario LIKE :busqueda";
+    $stmt_count = $pdo->prepare($sql_count);
+    $stmt_count->execute(['busqueda' => '%' . $busqueda . '%']);
+} else {
+    $sql_count = "SELECT COUNT(*) as total FROM usuarios";
+    $stmt_count = $pdo->prepare($sql_count);
+    $stmt_count->execute();
+}
+$total_registros = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+// Obtener usuarios con paginación
 if (!empty($busqueda)) {
     $sql = "SELECT u.*, r.nombre as rol_nombre 
             FROM usuarios u
             LEFT JOIN roles r ON u.rol_id = r.id
             WHERE u.nombre_completo LIKE :busqueda 
                OR u.usuario LIKE :busqueda
-            ORDER BY u.id ASC";
+            ORDER BY u.id ASC
+            LIMIT :offset, :registros_por_pagina";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute(['busqueda' => '%' . $busqueda . '%']);
-    $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->bindValue(':busqueda', '%' . $busqueda . '%');
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->bindValue(':registros_por_pagina', $registros_por_pagina, PDO::PARAM_INT);
+    $stmt->execute();
 } else {
     $sql = "SELECT u.*, r.nombre as rol_nombre 
             FROM usuarios u
             LEFT JOIN roles r ON u.rol_id = r.id
-            ORDER BY u.id ASC";
-    $usuarios = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+            ORDER BY u.id ASC
+            LIMIT :offset, :registros_por_pagina";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->bindValue(':registros_por_pagina', $registros_por_pagina, PDO::PARAM_INT);
+    $stmt->execute();
 }
+$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -99,326 +127,100 @@ if (!empty($busqueda)) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: #d3d3d3; color: #2c3e50; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: #d3d3d3;
-            color: #2c3e50;
-        }
+        .header { background: #12232b; padding: 0px 0; margin-bottom: 30px; border-bottom: 3px solid #173742; }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
+        .logo h1 { color: white; font-size: 24px; }
+        .logo span { color: #445960; }
+        .btn-volver { background: #445960; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; }
+        .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
         
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+        .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .card h2 { margin-bottom: 20px; border-left: 4px solid #173742; padding-left: 15px; }
         
-        .header {
-            background: #12232b;
-            padding: 0px 0;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #173742;
-        }
+        .btn-agregar { background: #173742; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; display: inline-block; margin-bottom: 20px; transition: all 0.3s ease; }
+        .btn-agregar:hover { background: #445960; transform: translateY(-2px); }
         
-        .header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #d3d3d3; }
+        th { background: #12232b; color: white; font-weight: 600; white-space: nowrap; }
+        tr:hover { background: #f8f9fa; }
         
-        .logo h1 {
-            color: white;
-            font-size: 24px;
-        }
+        .badge { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; white-space: nowrap; }
+        .badge-admin { background: #173742; color: white; }
+        .badge-supervisor { background: #f39c12; color: white; }
+        .badge-usuario { background: #445960; color: white; }
+        .badge-activo { background: #27ae60; color: white; }
+        .badge-inactivo { background: #e74c3c; color: white; }
         
-        .logo span {
-            color: #445960;
-        }
+        .btn-accion { padding: 5px 10px; margin: 0 2px; text-decoration: none; border-radius: 5px; font-size: 12px; display: inline-block; transition: all 0.3s ease; }
+        .btn-accion:hover { transform: translateY(-2px); }
+        .btn-editar { background: #3498db; color: white; }
+        .btn-editar:hover { background: #2980b9; }
+        .btn-eliminar { background: #e74c3c; color: white; }
+        .btn-eliminar:hover { background: #c0392b; }
+        .btn-permisos { background: #8e44ad; color: white; }
+        .btn-permisos:hover { background: #732d91; }
+        .btn-estado-activo { background: #f39c12; color: white; }
+        .btn-estado-activo:hover { background: #e67e22; }
+        .btn-estado-inactivo { background: #27ae60; color: white; }
+        .btn-estado-inactivo:hover { background: #219a52; }
         
-        .btn-volver {
-            background: #445960;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
+        .mensaje-exito { background: #d4edda; color: #155724; padding: 12px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
+        .mensaje-error { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
         
-        .btn-volver:hover {
-            background: #ffc107;
-            color: #12232b;
-            transform: translateY(-2px);
-        }
+        .acciones-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .text-muted { color: #7f8c8d; font-size: 12px; }
+        .td-min { white-space: nowrap; }
         
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .card h2 {
-            margin-bottom: 20px;
-            border-left: 4px solid #173742;
-            padding-left: 15px;
-        }
-        
-        .btn-agregar {
-            background: #173742;
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 8px;
-            display: inline-block;
-            margin-bottom: 20px;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-agregar:hover {
-            background: #445960;
-            transform: translateY(-2px);
-        }
-        
-        .table-responsive {
-            overflow-x: auto;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-        
-        th, td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #d3d3d3;
-        }
-        
-        th {
-            background: #12232b;
-            color: white;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        
-        tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-block;
-            white-space: nowrap;
-        }
-        
-        .badge-admin {
-            background: #173742;
-            color: white;
-        }
-        
-        .badge-supervisor {
-            background: #f39c12;
-            color: white;
-        }
-        
-        .badge-usuario {
-            background: #445960;
-            color: white;
-        }
-        
-        .badge-activo {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .badge-inactivo {
-            background: #e74c3c;
-            color: white;
-        }
-        
-        .btn-accion {
-            padding: 5px 10px;
-            margin: 0 2px;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 12px;
-            display: inline-block;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-accion:hover {
-            transform: translateY(-2px);
-        }
-        
-        .btn-editar {
-            background: #3498db;
-            color: white;
-        }
-        
-        .btn-editar:hover {
-            background: #2980b9;
-        }
-        
-        .btn-eliminar {
-            background: #e74c3c;
-            color: white;
-        }
-        
-        .btn-eliminar:hover {
-            background: #c0392b;
-        }
-        
-        .btn-permisos {
-            background: #8e44ad;
-            color: white;
-        }
-        
-        .btn-permisos:hover {
-            background: #732d91;
-        }
-        
-        .btn-estado-activo {
-            background: #f39c12;
-            color: white;
-        }
-        
-        .btn-estado-activo:hover {
-            background: #e67e22;
-        }
-        
-        .btn-estado-inactivo {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .btn-estado-inactivo:hover {
-            background: #219a52;
-        }
-        
-        .mensaje-exito {
-            background: #d4edda;
-            color: #155724;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .mensaje-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #f5c6cb;
-        }
-
-        .acciones-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .text-muted {
-            color: #7f8c8d;
-            font-size: 12px;
-        }
-
-        .td-min {
-            white-space: nowrap;
-        }
+        .buscador-container { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+        .buscador-container form { display: flex; gap: 10px; align-items: center; flex: 1; flex-wrap: wrap; }
+        .buscador-container input[type="text"] { flex: 1; min-width: 200px; padding: 10px 15px; border: 1px solid #d3d3d3; border-radius: 8px; font-family: 'Poppins', sans-serif; font-size: 14px; transition: border-color 0.3s; }
+        .buscador-container input[type="text"]:focus { outline: none; border-color: #173742; }
+        .btn-buscar { background: #173742; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-family: 'Poppins', sans-serif; font-weight: 500; transition: all 0.3s ease; white-space: nowrap; }
+        .btn-buscar:hover { background: #445960; transform: translateY(-2px); }
+        .btn-limpiar { background: #7f8c8d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-family: 'Poppins', sans-serif; font-weight: 500; transition: all 0.3s ease; white-space: nowrap; }
+        .btn-limpiar:hover { background: #e74c3c; transform: translateY(-2px); }
+        .resultado-busqueda { font-size: 13px; color: #7f8c8d; margin-bottom: 15px; }
+        .resultado-busqueda strong { color: #12232b; }
 
         /* ============================================
-           ✅ ESTILOS DEL BUSCADOR
+        PAGINACIÓN
         ============================================ */
-        .buscador-container {
+        .paginacion-container {
             display: flex;
-            gap: 10px;
+            justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
             flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #d3d3d3;
         }
-
-        .buscador-container form {
-            display: flex;
-            gap: 10px;
+        .paginacion-info { font-size: 13px; color: #7f8c8d; }
+        .paginacion-info strong { color: #12232b; }
+        .paginacion { display: flex; gap: 5px; flex-wrap: wrap; }
+        .paginacion a, .paginacion .pagina-actual {
+            display: inline-flex;
             align-items: center;
-            flex: 1;
-            flex-wrap: wrap;
-        }
-
-        .buscador-container input[type="text"] {
-            flex: 1;
-            min-width: 200px;
-            padding: 10px 15px;
-            border: 1px solid #d3d3d3;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-
-        .buscador-container input[type="text"]:focus {
-            outline: none;
-            border-color: #173742;
-        }
-
-        .btn-buscar {
-            background: #173742;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            white-space: nowrap;
-        }
-
-        .btn-buscar:hover {
-            background: #445960;
-            transform: translateY(-2px);
-        }
-
-        .btn-limpiar {
-            background: #7f8c8d;
-            color: white;
-            padding: 10px 20px;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 12px;
+            border-radius: 6px;
             text-decoration: none;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
             font-weight: 500;
             transition: all 0.3s ease;
-            white-space: nowrap;
         }
-
-        .btn-limpiar:hover {
-            background: #e74c3c;
-            transform: translateY(-2px);
-        }
-
-        .resultado-busqueda {
-            font-size: 13px;
-            color: #7f8c8d;
-            margin-bottom: 15px;
-        }
-
-        .resultado-busqueda strong {
-            color: #12232b;
-        }
+        .paginacion a { background: #f0f0f0; color: #2c3e50; }
+        .paginacion a:hover { background: #173742; color: white; transform: translateY(-2px); }
+        .paginacion .pagina-actual { background: #173742; color: white; }
+        .paginacion .pagina-puntos { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; color: #7f8c8d; }
 
         @media (max-width: 768px) {
             .container { padding: 10px; }
@@ -428,8 +230,8 @@ if (!empty($busqueda)) {
             th, td { padding: 6px 8px; }
             .buscador-container form { flex-direction: column; }
             .buscador-container input[type="text"] { width: 100%; min-width: auto; }
-            .buscador-container .btn-buscar,
-            .buscador-container .btn-limpiar { width: 100%; text-align: center; }
+            .buscador-container .btn-buscar, .buscador-container .btn-limpiar { width: 100%; text-align: center; }
+            .paginacion-container { flex-direction: column; align-items: center; }
         }
     </style>
 </head>
@@ -463,9 +265,6 @@ if (!empty($busqueda)) {
                 </a>
             </div>
 
-            <!-- ============================================
-            ✅ BUSCADOR
-            ============================================ -->
             <div class="buscador-container">
                 <form method="GET" action="">
                     <input type="text" name="buscar" placeholder="Buscar por nombre o usuario..." value="<?php echo htmlspecialchars($busqueda); ?>">
@@ -480,9 +279,6 @@ if (!empty($busqueda)) {
                 </form>
             </div>
 
-            <!-- ============================================
-            ✅ RESULTADO DE BÚSQUEDA
-            ============================================ -->
             <?php if (!empty($busqueda)): ?>
                 <div class="resultado-busqueda">
                     <i class="fas fa-search"></i> Resultados para: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong>
@@ -575,6 +371,79 @@ if (!empty($busqueda)) {
                     </tbody>
                 </table>
             </div>
+
+            <!-- ============================================
+            ✅ PAGINACIÓN
+            ============================================ -->
+            <?php if ($total_paginas > 1): ?>
+            <div class="paginacion-container">
+                <div class="paginacion-info">
+                    <i class="fas fa-info-circle"></i> 
+                    Mostrando <strong><?php echo count($usuarios); ?></strong> de <strong><?php echo $total_registros; ?></strong> usuarios
+                    <?php if (!empty($busqueda)): ?>
+                        | Resultados para: <strong>"<?php echo htmlspecialchars($busqueda); ?>"</strong>
+                    <?php endif; ?>
+                </div>
+
+                <div class="paginacion">
+                    <!-- Primera página -->
+                    <?php if ($pagina > 1): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => 1])); ?>" title="Primera página">
+                            <i class="fas fa-angle-double-left"></i>
+                        </a>
+                    <?php endif; ?>
+
+                    <!-- Anterior -->
+                    <?php if ($pagina > 1): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina - 1])); ?>" title="Página anterior">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    <?php endif; ?>
+
+                    <!-- Páginas -->
+                    <?php
+                    $rango = 2;
+                    $inicio = max(1, $pagina - $rango);
+                    $fin = min($total_paginas, $pagina + $rango);
+
+                    if ($inicio > 1): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => 1])); ?>">1</a>
+                        <?php if ($inicio > 2): ?>
+                            <span class="pagina-puntos">…</span>
+                        <?php endif; ?>
+                    <?php endif; ?>
+
+                    <?php for ($i = $inicio; $i <= $fin; $i++): ?>
+                        <?php if ($i == $pagina): ?>
+                            <span class="pagina-actual"><?php echo $i; ?></span>
+                        <?php else: ?>
+                            <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $i])); ?>"><?php echo $i; ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($fin < $total_paginas): ?>
+                        <?php if ($fin < $total_paginas - 1): ?>
+                            <span class="pagina-puntos">…</span>
+                        <?php endif; ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $total_paginas])); ?>"><?php echo $total_paginas; ?></a>
+                    <?php endif; ?>
+
+                    <!-- Siguiente -->
+                    <?php if ($pagina < $total_paginas): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $pagina + 1])); ?>" title="Página siguiente">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                    <?php endif; ?>
+
+                    <!-- Última página -->
+                    <?php if ($pagina < $total_paginas): ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['pagina' => $total_paginas])); ?>" title="Última página">
+                            <i class="fas fa-angle-double-right"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 </body>

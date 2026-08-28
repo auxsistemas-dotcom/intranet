@@ -302,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <img src="../../../uploads/logo/30-años-blanco.webp" alt="logo intranet" style="display: flex; width: 130px;">
                 <small style="color: #8aa8b8;">| Crear Anuncio</small>
             </div>
-            <a href="../index.php" class="btn-volver">
+            <a href="index.php" class="btn-volver">
                 <i class="fas fa-arrow-left"></i> Volver
             </a>
         </div>

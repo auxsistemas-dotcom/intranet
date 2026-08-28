@@ -286,7 +286,7 @@ $ultimos_documentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="container">
             <div class="logo">
                 <img src="../../uploads/logo/30-años-blanco.webp" alt="logo intranet" style="display: flex; width: 130px;">
-                <small>| Gestión Humana</small>
+                <small style="color: #8aa8b8;">| Gestión Humana</small>
             </div>
             <a href="../index.php" class="btn-volver">
                 <i class="fas fa-arrow-left"></i> Volver al Panel

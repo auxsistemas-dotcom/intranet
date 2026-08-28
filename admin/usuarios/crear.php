@@ -45,6 +45,7 @@ $perfiles_cargos = [
         'Líder de Cartera',
         'Líder de Calidad',
         'Líder Comercial Posventa',
+        'Líder Control Interno',
         'Líder de Compras',
         'Líder de Mercadeo',
         'Líder Logística',
@@ -57,6 +58,7 @@ $perfiles_cargos = [
         'Líder de Servicio',
         'Líder Comercial',
         'Líder Administrativa',
+        'Líder Gestión Humana',
         'Coordinador Call Center',
         'Coordinador de Taller Mecánica',
         'Coordinador de Seguridad y Salud',
@@ -153,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $rol_id = intval($_POST['rol_id'] ?? 3);
     $activo = isset($_POST['activo']) ? 1 : 0;
+    $es_jefe = isset($_POST['es_jefe']) ? 1 : 0;
     $telefono = trim($_POST['telefono'] ?? '');
     $perfil_usuario = trim($_POST['perfil_usuario'] ?? '');
     $cargo = trim($_POST['cargo'] ?? '');
@@ -188,12 +191,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             email, 
                             password, 
                             rol_id, 
+                            es_jefe,
                             activo,
                             telefono,
                             perfil_usuario,
                             cargo,
                             sede
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([
                         $nombre_completo, 
@@ -201,6 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $email, 
                         $password_hash, 
                         $rol_id, 
+                        $es_jefe,
                         $activo,
                         $telefono,
                         $perfil_usuario,
@@ -212,6 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $nombre_completo = $usuario = $email = $password = '';
                     $rol_id = 3;
                     $activo = 1;
+                    $es_jefe = 0;
                     $telefono = $perfil_usuario = $cargo = $sede = '';
                 }
             }
@@ -230,26 +236,225 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Poppins', sans-serif; background: #d3d3d3; color: #2c3e50; }
-        .container { max-width: 700px; margin: 50px auto; padding: 20px; }
-        .card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .card h2 { margin-bottom: 20px; border-left: 4px solid #173742; padding-left: 15px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 10px 15px; border: 1px solid #d3d3d3; border-radius: 8px; font-family: 'Poppins', sans-serif; }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: #173742; }
-        .checkbox-group { display: flex; align-items: center; gap: 10px; }
-        .checkbox-group input { width: auto; }
-        .btn-guardar { background: #173742; color: white; border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; transition: all 0.3s ease; }
-        .btn-guardar:hover { background: #445960; transform: translateY(-2px); }
-        .btn-volver { background: #445960; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; display: inline-block; margin-bottom: 20px; transition: all 0.3s ease; }
-        .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
-        .mensaje-exito { background: #d4edda; color: #155724; padding: 12px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
-        .mensaje-error { background: #f8d7da; color: #721c24; padding: 12px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
-        .info-text { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
-        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+        /* ============================================
+        ESTILOS GENERALES
+        ============================================ */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #d3d3d3;
+            color: #2c3e50;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            border-left: 4px solid #173742;
+            padding-left: 15px;
+        }
+
+
+        /* ============================================
+        FILAS Y CAMPOS DEL FORMULARIO
+        ============================================ */
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #d3d3d3;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #173742;
+        }
+
+
+        /* ============================================
+        CHECKBOX
+        ============================================ */
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-top: 0px;
+            flex-shrink: 0;
+        }
+
+        /*
+        Contenedor del texto del checkbox.
+        Permite colocar el título y la descripción
+        uno debajo del otro.
+        */
+        .checkbox-text {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-top: 19px;
+        }
+
+        .checkbox-text label {
+            display: block;
+            margin: 0;
+            font-weight: 500;
+            line-height: 1.3;
+            cursor: pointer;
+        }
+
+        .checkbox-text .info-text {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            color: #7f8c8d;
+            line-height: 1.4;
+        }
+
+
+        /* ============================================
+        TEXTO INFORMATIVO GENERAL
+        ============================================ */
+
+        .info-text {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+
+        /* ============================================
+        BOTÓN GUARDAR
+        ============================================ */
+
+        .btn-guardar {
+            background: #173742;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .btn-guardar:hover {
+            background: #445960;
+            transform: translateY(-2px);
+        }
+
+
+        /* ============================================
+        BOTÓN VOLVER
+        ============================================ */
+
+        .btn-volver {
+            background: #445960;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-volver:hover {
+            background: #ffc107;
+            color: #12232b;
+            transform: translateY(-2px);
+        }
+
+
+        /* ============================================
+        MENSAJE DE ÉXITO
+        ============================================ */
+
+        .mensaje-exito {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+            transition: opacity 0.5s ease;
+        }
+
+
+        /* ============================================
+        MENSAJE DE ERROR
+        ============================================ */
+
+        .mensaje-error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+
+        /* ============================================
+        RESPONSIVE
+        ============================================ */
+
+        @media (max-width: 600px) {
+
+            .container {
+                margin: 20px auto;
+                padding: 15px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -262,7 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h2><i class="fas fa-user-plus"></i> Crear Nuevo Usuario</h2>
             
             <?php if ($mensaje): ?>
-                <div class="mensaje-exito">
+                <div class="mensaje-exito" id="mensajeExito">
                     <i class="fas fa-check-circle"></i> <?php echo $mensaje; ?>
                 </div>
             <?php endif; ?>
@@ -350,10 +555,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="form-group checkbox-group" style="display: flex; align-items: center; padding-top: 30px;">
-                        <input type="checkbox" name="activo" <?php echo ($activo ?? 1) ? 'checked' : ''; ?>>
-                        <label style="margin: 0;">Usuario Activo</label>
+                    <!-- NUEVO: Tiene personal a cargo -->
+                    <div class="form-group checkbox-group" style="padding: 5px 0; margin-bottom: 15px;">
+                        <input type="checkbox" name="es_jefe" id="es_jefe" <?php echo ($es_jefe ?? 0) ? 'checked' : ''; ?>>
+                        <div class="checkbox-text">
+                            <label for="es_jefe" style="font-weight: 500;">Tiene personal a cargo</label>
+                            <p class="info-text" style="margin-left: 10px;">(Marcar si es jefe o líder)</p>
+                        </div>   
                     </div>
+                </div>
+
+                <div class="form-group checkbox-group" style="display: flex; align-items: center; padding-top: 15px;">
+                    <input type="checkbox" name="activo" <?php echo ($activo ?? 1) ? 'checked' : ''; ?>>
+                    <label style="margin: 0;">Usuario Activo</label>
                 </div>
 
                 <button type="submit" class="btn-guardar">
@@ -394,6 +608,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const perfilSelect = document.getElementById('perfil_usuario');
             if (perfilSelect.value) {
                 actualizarCargos();
+            }
+        });
+
+        // ============================================
+        // NOTIFICACIÓN CON DESAPARICIÓN AUTOMÁTICA
+        // ============================================
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const mensajeExito = document.querySelector('.mensaje-exito');
+            if (mensajeExito) {
+                setTimeout(function() {
+                    mensajeExito.style.opacity = '0';
+                    setTimeout(function() {
+                        mensajeExito.style.display = 'none';
+                    }, 500);
+                }, 3000);
             }
         });
     </script>
