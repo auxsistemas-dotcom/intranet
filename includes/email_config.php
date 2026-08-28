@@ -1,57 +1,17 @@
 <?php
-// includes/email_config.php - Configuración con PHPMailer
-
-require_once __DIR__ . '/PHPMailer/PHPMailer.php';
-require_once __DIR__ . '/PHPMailer/SMTP.php';
-require_once __DIR__ . '/PHPMailer/Exception.php';
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\SMTP;
-use PHPMailer\PHPMailer\Exception;
+// includes/email_config.php - VERSIÓN CON mail() DE PHP (SIN SMTP)
 
 function enviarCorreo($destinatario, $asunto, $mensaje_html, $mensaje_texto = '') {
-    
-    // ============================================
-    // 🔧 CONFIGURACIÓN SMTP - TUS DATOS
-    // ============================================
-    
-    $smtp_host = 'smtp.gmail.com';        // 🔴 CAMBIA según tu proveedor
-    $smtp_port = 587;                          // 587 para TLS, 465 para SSL
-    $smtp_usuario = 'auxadministrativo.manizales@armotor.com';
-    $smtp_password = 'Armotor.202522';
-    $remitente = 'auxadministrativo.manizales@armotor.com';
+    $remitente = 'informacion@armotor.com';
     $nombre_remitente = 'Sistema Intranet - ARMOTOR';
     
-    $mail = new PHPMailer(true);
+    $headers = "MIME-Version: 1.0\r\n";
+    $headers .= "Content-type: text/html; charset=utf-8\r\n";
+    $headers .= "From: " . $nombre_remitente . " <" . $remitente . ">\r\n";
+    $headers .= "Reply-To: " . $remitente . "\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion();
     
-    try {
-        // Configuración SMTP
-        $mail->isSMTP();
-        $mail->Host = $smtp_host;
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_usuario;
-        $mail->Password = $smtp_password;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = $smtp_port;
-        
-        // Remitente y destinatario
-        $mail->setFrom($remitente, $nombre_remitente);
-        $mail->addAddress($destinatario);
-        $mail->addReplyTo($remitente, $nombre_remitente);
-        
-        // Contenido
-        $mail->isHTML(true);
-        $mail->Subject = $asunto;
-        $mail->Body = $mensaje_html;
-        $mail->AltBody = !empty($mensaje_texto) ? $mensaje_texto : strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</div>'], "\n", $mensaje_html));
-        
-        $mail->send();
-        return true;
-        
-    } catch (Exception $e) {
-        error_log("❌ Error al enviar correo: " . $mail->ErrorInfo);
-        return false;
-    }
+    return mail($destinatario, $asunto, $mensaje_html, $headers);
 }
 
 function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $destinatario_nombre) {
@@ -86,7 +46,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     $tipo_nombre = $tipos_permisos[$solicitud['tipo']] ?? $solicitud['tipo'];
     
     $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $url_base = $protocolo . $_SERVER['HTTP_HOST'] . '/intranet/';
+    $url_base = $protocolo . $_SERVER['HTTP_HOST'] . '/';
     
     // ============================================
     // MENSAJE HTML
@@ -120,7 +80,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
         <div class="container">
             <div class="header">
                 <h1>📋 Solicitud de Permiso</h1>
-                <p>Sistema Intranet - AR Motor</p>
+                <p>Sistema Intranet - ARMOTOR</p>
             </div>
             <div class="content">
                 <h2 style="color: #12232b; margin-top: 0;">' . ($tipo == 'nueva' ? 'Nueva Solicitud de Permiso' : 'Actualización de Solicitud') . '</h2>
@@ -178,7 +138,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     if ($tipo == 'nueva') {
         $mensaje_html .= '
                 <p style="text-align: center;">
-                    <a href="' . $url_base . 'admin/gestion_permisos/ver_detalle.php?id=' . $solicitud['id'] . '" class="btn">
+                    <a href="' . $url_base . 'admin/gestion_permisos' . '" class="btn" style="color: white;">
                         🔍 Ver y Gestionar Solicitud
                     </a>
                 </p>
@@ -197,7 +157,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     $mensaje_html .= '
             </div>
             <div class="footer">
-                <p>Este es un mensaje automático del Sistema Intranet de AR Motor.</p>
+                <p>Este es un mensaje automático del Sistema Intranet de ARMOTOR.</p>
                 <p>📧 Por favor no respondas a este correo.</p>
             </div>
         </div>
