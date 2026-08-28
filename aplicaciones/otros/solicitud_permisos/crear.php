@@ -2,6 +2,7 @@
 // aplicaciones/otros/solicitud_permisos/crear.php - Crear nueva solicitud de permiso
 require_once '../../../includes/config.php';
 require_once '../../../includes/auth_check.php';
+require_once '../../../includes/email_config.php';
 
 // ✅ VERIFICAR ACCESO - Requiere login
 if (!isset($_SESSION['usuario_id'])) {
@@ -36,7 +37,7 @@ $tipos_permisos = [
 // LISTA DE JEFES DESDE LA BASE DE DATOS
 // ============================================
 $stmt = $pdo->prepare("
-    SELECT id, nombre_completo 
+    SELECT id, nombre_completo, email 
     FROM usuarios 
     WHERE es_jefe = 1 AND activo = 1
     ORDER BY nombre_completo ASC
@@ -85,7 +86,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $archivo_error = "❌ Error al subir el archivo: " . $_FILES['archivo']['error'];
     }
     
-    // Validaciones
+    // ============================================
+    // VALIDACIONES ADICIONALES
+    // ============================================
+    
+    // Validar que el jefe existe y tiene email
+    if ($jefe_inmediato > 0) {
+        $stmt_jefe_val = $pdo->prepare("SELECT id, email, nombre_completo FROM usuarios WHERE id = ? AND es_jefe = 1 AND activo = 1");
+        $stmt_jefe_val->execute([$jefe_inmediato]);
+        $jefe_valido = $stmt_jefe_val->fetch(PDO::FETCH_ASSOC);
+        if (!$jefe_valido) {
+            $error = "❌ El jefe seleccionado no es válido o no está activo";
+        } elseif (empty($jefe_valido['email'])) {
+            $error = "❌ El jefe seleccionado no tiene correo electrónico configurado";
+        }
+    }
+    
+    // Validar que el usuario no se asigne a sí mismo como jefe
+    if ($jefe_inmediato == $usuario_id) {
+        $error = "❌ No puedes seleccionarte a ti mismo como jefe";
+    }
+    
+    // Validar duración máxima (ejemplo: máximo 8 horas)
+    $diff_horas = (strtotime($fecha_fin) - strtotime($fecha_inicio)) / 3600;
+    if ($diff_horas > 8) {
+        $error = "❌ La duración máxima del permiso es de 8 horas";
+    }
+    
+    // Validar que no hay solicitudes pendientes duplicadas
+    $stmt_dup = $pdo->prepare("
+        SELECT COUNT(*) as total 
+        FROM solicitudes_permisos 
+        WHERE usuario_id = ? 
+        AND estado = 'pendiente'
+        AND (
+            (fecha_inicio BETWEEN ? AND ?) OR 
+            (fecha_fin BETWEEN ? AND ?) OR
+            (fecha_inicio <= ? AND fecha_fin >= ?)
+        )
+    ");
+    $stmt_dup->execute([
+        $usuario_id, 
+        $fecha_inicio, $fecha_fin,
+        $fecha_inicio, $fecha_fin,
+        $fecha_inicio, $fecha_fin
+    ]);
+    $solicitudes_pendientes = $stmt_dup->fetchColumn();
+    if ($solicitudes_pendientes > 0) {
+        $error = "❌ Ya tienes una solicitud pendiente para este período de tiempo";
+    }
+    
+    // Validaciones básicas
     if (empty($tipo)) {
         $error = "❌ Debes seleccionar un tipo de permiso";
     } elseif (empty($jefe_inmediato)) {
@@ -95,22 +146,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (empty($fecha_fin)) {
         $error = "❌ Debes seleccionar la fecha y hora de fin";
     } elseif (strtotime($fecha_inicio) > strtotime($fecha_fin)) {
-    $error = "❌ La fecha de inicio no puede ser mayor a la fecha de fin";
+        $error = "❌ La fecha de inicio no puede ser mayor a la fecha de fin";
     } elseif (strtotime(date('Y-m-d', strtotime($fecha_inicio))) < strtotime(date('Y-m-d'))) {
         $error = "❌ La fecha de inicio no puede ser anterior a hoy";
     } elseif (!empty($archivo_error)) {
         $error = $archivo_error;
     } else {
         try {
-            // Ya no necesitas obtener el nombre, solo guarda el ID directamente
+            // ============================================
+            // GUARDAR SOLICITUD
+            // ============================================
             $stmt = $pdo->prepare("
                 INSERT INTO solicitudes_permisos 
-                (usuario_id, jefe_inmediato, tipo, descripcion, archivo, fecha_inicio, fecha_fin) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (usuario_id, jefe_inmediato, tipo, descripcion, archivo, fecha_inicio, fecha_fin, estado, solicitado_el) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', NOW())
             ");
             $stmt->execute([
                 $usuario_id, 
-                $jefe_inmediato,  // ✅ Guarda el ID del jefe (INT)
+                $jefe_inmediato,
                 $tipo, 
                 $descripcion, 
                 $archivo_nombre, 
@@ -118,7 +171,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $fecha_fin
             ]);
             
-            $_SESSION['mensaje'] = "✅ Solicitud de permiso creada correctamente";
+            $solicitud_id = $pdo->lastInsertId();
+            
+            // ============================================
+            // ✅ ENVIAR NOTIFICACIÓN POR EMAIL AL JEFE
+            // ============================================
+            
+            // Obtener datos completos de la solicitud para el correo
+            $stmt_solicitud = $pdo->prepare("SELECT * FROM solicitudes_permisos WHERE id = ?");
+            $stmt_solicitud->execute([$solicitud_id]);
+            $solicitud_data = $stmt_solicitud->fetch(PDO::FETCH_ASSOC);
+            
+            // Obtener datos del jefe
+            $stmt_jefe = $pdo->prepare("SELECT id, nombre_completo, email FROM usuarios WHERE id = ?");
+            $stmt_jefe->execute([$jefe_inmediato]);
+            $jefe = $stmt_jefe->fetch(PDO::FETCH_ASSOC);
+            
+            // Enviar notificación si el jefe tiene email
+            if ($jefe && !empty($jefe['email'])) {
+                $enviado = enviarNotificacionPermiso($solicitud_data, 'nueva', $jefe['email'], $jefe['nombre_completo']);
+                
+                if ($enviado) {
+                    error_log("✅ Notificación enviada a {$jefe['email']} para solicitud #{$solicitud_id}");
+                } else {
+                    error_log("❌ Error al enviar notificación a {$jefe['email']} para solicitud #{$solicitud_id}");
+                }
+            } else {
+                error_log("⚠️ No se pudo enviar notificación: jefe sin email (ID: {$jefe_inmediato})");
+            }
+            
+            $_SESSION['mensaje'] = "✅ Solicitud de permiso creada correctamente. Se ha notificado a tu jefe.";
             header("Location: index.php");
             exit();
             
@@ -371,7 +453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php else: ?>
                         <div class="info-text" style="margin-top: 5px;">
                             <i class="fas fa-info-circle"></i> 
-                            Selecciona tu jefe inmediato para que reciba la solicitud.
+                            Selecciona tu jefe inmediato. Recibirá una notificación por correo electrónico.
                         </div>
                     <?php endif; ?>
                 </div>
@@ -416,7 +498,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="info-text" style="margin-bottom: 20px;">
                     <i class="fas fa-info-circle"></i> 
-                    Las solicitudes serán revisadas y aprobadas por el área de Gestión Humana.
+                    Las solicitudes serán revisadas y aprobadas por tu jefe inmediato.
                 </div>
 
                 <button type="submit" class="btn-guardar">

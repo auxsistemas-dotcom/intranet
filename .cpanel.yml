@@ -1,5 +1,0 @@
----
-deployment:
-  tasks:
-    - export DEPLOYPATH=/home/armotor/intranet2/
-    - /bin/rsync -av --exclude='.git/' ./ $DEPLOYPATH
