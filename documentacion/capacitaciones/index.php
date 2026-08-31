@@ -642,21 +642,6 @@ foreach ($areas as $key => $area) {
         <?php endif; ?>
     </div>
 </main>
-
-<footer class="footer">
-    <div class="container">
-        <div class="footer-content">
-            <div class="footer-logo">
-                <i class="fas fa-car"></i>
-                <span>INTRANET</span>
-            </div>
-            <div class="footer-copyright">
-                <p>© 2026 INTRANET - Todos los derechos reservados</p>
-            </div>
-        </div>
-    </div>
-</footer>
-
 <script>
     // =============================================
     // 1. FUNCIONES DE TOGGLE (con guardado de estado)

@@ -346,20 +346,5 @@ function getFileInfo($archivo_url) {
         <?php endif; ?>
     </div>
 </main>
-
-<footer class="footer">
-    <div class="container">
-        <div class="footer-content">
-            <div class="footer-logo">
-                <i class="fas fa-car"></i>
-                <span>INTRANET</span>
-            </div>
-            <div class="footer-copyright">
-                <p>© <?php echo date('Y'); ?> INTRANET - Todos los derechos reservados</p>
-            </div>
-        </div>
-    </div>
-</footer>
-
 </body>
 </html>
