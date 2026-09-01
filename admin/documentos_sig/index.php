@@ -3,39 +3,17 @@
 require_once '../../includes/config.php';
 require_once '../../includes/auth_check.php';
 
-// ✅ VERIFICAR ACCESO
+// ✅ VERIFICAR ACCESO: Administradores (rol_id = 1) o Supervisores (rol_id = 2)
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: ../login.php');
     exit();
 }
 
 $rol_usuario = $_SESSION['rol'] ?? 3;
-$usuario_id = $_SESSION['usuario_id'];
 
-// Admin: acceso total
-if ($rol_usuario == 1) {
-    // Tiene acceso
-} 
-// Supervisor: verificar permiso
-elseif ($rol_usuario == 2) {
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) as tiene_permiso 
-        FROM permisos_usuarios pu
-        JOIN modulos m ON pu.modulo_id = m.id
-        WHERE pu.usuario_id = ? AND m.nombre = 'documentos_sig' AND m.activo = 1
-    ");
-    $stmt->execute([$usuario_id]);
-    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$permiso || $permiso['tiene_permiso'] == 0) {
-        $_SESSION['error'] = "❌ No tienes permiso para gestionar Documentos SIG";
-        header('Location: ../index.php');
-        exit();
-    }
-} 
-// Usuario normal: sin acceso
-else {
-    header('Location: ../index.php');
+if ($rol_usuario != 1 && $rol_usuario != 2) {
+    $_SESSION['error'] = "❌ No tienes permiso para gestionar documentos SIG";
+    header('Location: ../../index.php');
     exit();
 }
 
@@ -51,7 +29,7 @@ if (isset($_SESSION['error'])) {
     unset($_SESSION['error']);
 }
 
-// ✅ Eliminar documento - CON REDIRECCIÓN
+// ✅ Eliminar documento
 if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
     $id = $_GET['eliminar'];
     
@@ -71,7 +49,7 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
     exit();
 }
 
-// ✅ Cambiar estado - CON REDIRECCIÓN
+// ✅ Cambiar estado
 if (isset($_GET['cambiar_estado']) && is_numeric($_GET['cambiar_estado'])) {
     $id = $_GET['cambiar_estado'];
     $stmt = $pdo->prepare("UPDATE documentos_sig SET activo = NOT activo WHERE id = ?");
@@ -83,7 +61,7 @@ if (isset($_GET['cambiar_estado']) && is_numeric($_GET['cambiar_estado'])) {
 }
 
 // Obtener todos los documentos
-$stmt = $pdo->query("SELECT * FROM documentos_sig ORDER BY titulo ASC");
+$stmt = $pdo->query("SELECT * FROM documentos_sig ORDER BY categoria ASC, titulo ASC");
 $documentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Función para obtener el badge según la extensión
@@ -96,10 +74,25 @@ function getBadgeInfo($archivo_url) {
             return ['clase' => 'badge-excel', 'icono' => '📊', 'texto' => 'Excel'];
         case 'xlsx':
             return ['clase' => 'badge-excel', 'icono' => '📊', 'texto' => 'Excel'];
+        case 'doc':
+        case 'docx':
+            return ['clase' => 'badge-word', 'icono' => '📝', 'texto' => 'Word'];
         default:
             return ['clase' => 'badge-other', 'icono' => '📎', 'texto' => 'Archivo'];
     }
 }
+
+// ✅ Lista de categorías predefinidas
+$categorias = [
+    'Administracion De La Infraestructura' => 'Administracion De La Infraestructura',
+    'Gestion Contable Y Financiera' => 'Gestion Contable Y Financiera',
+    'Gestion De La Relacion Con El Cliente' => 'Gestion De La Relacion Con El Cliente',
+    'Gestion Del Talento Humano' => 'Gestion Del Talento Humano',
+    'Gestion Logistica' => 'Gestion Logistica',
+    'Planeacion Y Seguimiento Organizacional' => 'Planeacion Y Seguimiento Organizacional',
+    'Posventa' => 'Posventa',
+    'Venta' => 'Venta',
+];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -156,11 +149,15 @@ function getBadgeInfo($archivo_url) {
             border-left: 4px solid #173742;
             padding-left: 15px;
             font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .form-group { margin-bottom: 20px; }
         .form-group label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; }
-        .form-group input, .form-group textarea {
+        .form-group label .obligatorio { color: #e74c3c; }
+        .form-group input, .form-group textarea, .form-group select {
             width: 100%;
             padding: 10px 15px;
             border: 1px solid #d3d3d3;
@@ -168,8 +165,9 @@ function getBadgeInfo($archivo_url) {
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
             transition: all 0.3s ease;
+            background: white;
         }
-        .form-group input:focus, .form-group textarea:focus {
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
             outline: none;
             border-color: #173742;
             box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
@@ -212,7 +210,18 @@ function getBadgeInfo($archivo_url) {
         .badge-inactivo { background: #fadbd8; color: #922b21; }
         .badge-pdf { background: #fadbd8; color: #922b21; }
         .badge-excel { background: #d5f5e3; color: #1a7a3a; }
+        .badge-word { background: #d6eaf8; color: #1a5276; }
         .badge-other { background: #e8f0fe; color: #1a4a7a; }
+        
+        .badge-categoria {
+            background: #e8f0fe;
+            color: #173742;
+            border: 1px solid #173742;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
         
         .btn-accion {
             padding: 5px 10px;
@@ -256,6 +265,37 @@ function getBadgeInfo($archivo_url) {
         }
         .empty-state i { font-size: 48px; color: #d3d3d3; margin-bottom: 15px; }
         .empty-state h3 { color: #2c3e50; margin-bottom: 5px; }
+
+        .filtro-categoria {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .filtro-categoria select {
+            padding: 8px 15px;
+            border: 1px solid #d3d3d3;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            background: white;
+            min-width: 200px;
+        }
+        .filtro-categoria .btn-filtrar {
+            background: #173742;
+            color: white;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .filtro-categoria .btn-filtrar:hover {
+            background: #445960;
+        }
     </style>
 </head>
 <body>
@@ -286,17 +326,29 @@ function getBadgeInfo($archivo_url) {
             <h2><i class="fas fa-plus-circle"></i> Agregar nuevo documento</h2>
             <form action="guardar.php" method="POST" enctype="multipart/form-data">
                 <div class="form-group">
-                    <label><i class="fas fa-heading"></i> Título</label>
+                    <label><i class="fas fa-heading"></i> Título <span class="obligatorio">*</span></label>
                     <input type="text" name="titulo" required placeholder="Ej: Formato de Solicitud">
                 </div>
+                
+                <!-- ✅ CAMPO CATEGORÍA - NUEVO -->
+                <div class="form-group">
+                    <label><i class="fas fa-tag"></i> Categoría <span class="obligatorio">*</span></label>
+                    <select name="categoria" required>
+                        <option value="">Seleccione una categoría</option>
+                        <?php foreach ($categorias as $key => $value): ?>
+                            <option value="<?php echo $key; ?>"><?php echo $value; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
                 <div class="form-group">
                     <label><i class="fas fa-align-left"></i> Descripción</label>
                     <textarea name="descripcion" rows="2" placeholder="Breve descripción del documento"></textarea>
                 </div>
                 <div class="form-group">
-                    <label><i class="fas fa-file"></i> Archivo</label>
-                    <input type="file" name="archivo_pdf" accept=".pdf,.xls,.xlsx" required>
-                    <div class="info-text">Formatos permitidos: PDF, XLS, XLSX. Máximo 6MB</div>
+                    <label><i class="fas fa-file"></i> Archivo <span class="obligatorio">*</span></label>
+                    <input type="file" name="archivo" accept=".pdf,.xls,.xlsx,.doc,.docx" required>
+                    <div class="info-text">Formatos permitidos: PDF, Excel (XLS, XLSX), Word (DOC, DOCX). Máximo 10MB</div>
                 </div>
                 <button type="submit" class="btn-guardar">
                     <i class="fas fa-save"></i> Guardar documento
@@ -327,10 +379,11 @@ function getBadgeInfo($archivo_url) {
                             <tr>
                                 <th style="width: 50px;">ID</th>
                                 <th style="min-width: 150px;">Título</th>
+                                <th style="min-width: 120px;">Categoría</th>
                                 <th style="min-width: 150px;">Descripción</th>
                                 <th style="width: 100px;">Tipo</th>
                                 <th style="width: 100px;">Estado</th>
-                                <th style="width: 180px;">Acciones</th>
+                                <th style="width: 200px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -340,6 +393,12 @@ function getBadgeInfo($archivo_url) {
                                     <td><?php echo $doc['id']; ?></td>
                                     <td>
                                         <strong><?php echo htmlspecialchars($doc['titulo']); ?></strong>
+                                    </td>
+                                    <td>
+                                        <span class="badge-categoria">
+                                            <i class="fas fa-tag"></i> 
+                                            <?php echo htmlspecialchars($doc['categoria'] ?? 'General'); ?>
+                                        </span>
                                     </td>
                                     <td><?php echo htmlspecialchars($doc['descripcion']); ?></td>
                                     <td>

@@ -42,40 +42,99 @@ else {
 $error = '';
 $mensaje = '';
 
+// ============================================
+// CONFIGURACIÓN DE ARCHIVOS
+// ============================================
+
+$extensiones_permitidas = [
+    'pdf'  => 'PDF',
+    'doc'  => 'Word',
+    'docx' => 'Word',
+    'xls'  => 'Excel',
+    'xlsx' => 'Excel'
+];
+
+$max_size = 10 * 1024 * 1024; // 10MB
+
+// ============================================
+// LISTA DE CATEGORÍAS
+// ============================================
+$categorias_validas = [
+    'Administracion De La Infraestructura',
+    'Gestion Contable Y Financiera',
+    'Gestion De La Relacion Con El Cliente',
+    'Gestion Del Talento Humano',
+    'Gestion Logistica',
+    'Planeacion Y Seguimiento Organizacional',
+    'Posventa',
+    'Venta'
+];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $titulo = trim($_POST['titulo'] ?? '');
+    $categoria = trim($_POST['categoria'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
     
+    // ============================================
+    // VALIDACIONES
+    // ============================================
     if (empty($titulo)) {
         $error = "❌ El título es obligatorio";
-    } elseif (!isset($_FILES['archivo_pdf']) || $_FILES['archivo_pdf']['error'] !== UPLOAD_ERR_OK) {
+    } elseif (empty($categoria)) {
+        $error = "❌ Debes seleccionar una categoría";
+    } elseif (!in_array($categoria, $categorias_validas)) {
+        $error = "❌ Categoría no válida";
+    } elseif (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
         $error = "❌ Debes seleccionar un archivo";
     } else {
-        $archivo = $_FILES['archivo_pdf'];
+        $archivo = $_FILES['archivo'];
         $extension = strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION));
-        $extensiones_permitidas = ['pdf', 'xls', 'xlsx'];
+        $nombre_original = $archivo['name'];
+        $tamano = $archivo['size'];
         
-        if (!in_array($extension, $extensiones_permitidas)) {
-            $error = "❌ Formatos permitidos: PDF, XLS, XLSX";
-        } elseif ($archivo['size'] > 6 * 1024 * 1024) {
-            $error = "❌ El archivo no puede superar los 6MB";
-        } else {
-            // Ruta: uploads/documentos/documentos_sig/
+        // Validar extensión
+        if (!array_key_exists($extension, $extensiones_permitidas)) {
+            $error = "❌ Formato no permitido. Usa: PDF, Word (.doc, .docx) o Excel (.xls, .xlsx)";
+        } 
+        // Validar tamaño
+        elseif ($tamano > $max_size) {
+            $error = "❌ El archivo no puede superar los 10MB";
+        } 
+        else {
+            // ============================================
+            // GUARDAR ARCHIVO
+            // ============================================
             $carpeta = '../../uploads/documentos/documentos_sig/';
             if (!file_exists($carpeta)) {
                 mkdir($carpeta, 0777, true);
             }
             
-            // Mantener la extensión original
-            $nombre_archivo = time() . '_' . uniqid() . '.' . $extension;
+            // Generar nombre único con la extensión original
+            $nombre_archivo = 'sig_' . time() . '_' . uniqid() . '.' . $extension;
             $ruta_destino = $carpeta . $nombre_archivo;
             $ruta_db = 'uploads/documentos/documentos_sig/' . $nombre_archivo;
             
             if (move_uploaded_file($archivo['tmp_name'], $ruta_destino)) {
-                // ✅ CORREGIDO: Insertar con todos los campos
-                $stmt = $pdo->prepare("INSERT INTO documentos_sig (titulo, descripcion, archivo_url, creado_por) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$titulo, $descripcion, $ruta_db, $usuario_id]);
-                $mensaje = "✅ Documento subido correctamente";
+                try {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO documentos_sig 
+                        (titulo, categoria, descripcion, archivo_url, tipo_archivo, nombre_original, creado_por, activo, creado_el) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())
+                    ");
+                    $stmt->execute([
+                        $titulo,
+                        $categoria,
+                        $descripcion,
+                        $ruta_db,
+                        $extensiones_permitidas[$extension],
+                        $nombre_original,
+                        $usuario_id
+                    ]);
+                    
+                    $mensaje = "✅ Documento subido correctamente";
+                } catch (PDOException $e) {
+                    $error = "❌ Error al guardar en la base de datos: " . $e->getMessage();
+                }
             } else {
                 $error = "❌ Error al subir el archivo";
             }
@@ -83,7 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ✅ CORREGIDO: Usar sesión para mensajes
+// ============================================
+// REDIRECCIONAR CON MENSAJE
+// ============================================
 if ($mensaje) {
     $_SESSION['mensaje'] = $mensaje;
     header("Location: index.php");

@@ -43,16 +43,34 @@ $id = $_GET['id'] ?? 0;
 $error = '';
 $mensaje = '';
 
-// ✅ CORREGIDO: Usar tabla 'politicas'
+// ============================================
+// CONFIGURACIÓN DE ARCHIVOS
+// ============================================
+
+$extensiones_permitidas = [
+    'pdf'  => 'PDF',
+    'doc'  => 'Word',
+    'docx' => 'Word',
+    'xls'  => 'Excel',
+    'xlsx' => 'Excel'
+];
+
+$max_size = 10 * 1024 * 1024; // 10MB
+
+// Obtener datos
 $stmt = $pdo->prepare("SELECT * FROM politicas WHERE id = ?");
 $stmt->execute([$id]);
 $item = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$item) {
+    $_SESSION['error'] = "❌ Política no encontrada";
     header("Location: index.php");
     exit();
 }
 
+// ============================================
+// PROCESAR FORMULARIO
+// ============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $titulo = trim($_POST['titulo'] ?? '');
     $descripcion = trim($_POST['descripcion'] ?? '');
@@ -60,35 +78,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($titulo)) {
         $error = "❌ El título es obligatorio";
     } else {
-        // Verificar si se subió una nueva imagen
-        if (isset($_FILES['archivo_pdf']) && $_FILES['archivo_pdf']['error'] === UPLOAD_ERR_OK) {
-            $archivo = $_FILES['archivo_pdf'];
+        // Verificar si se subió un nuevo archivo
+        if (isset($_FILES['archivo']) && $_FILES['archivo']['error'] === UPLOAD_ERR_OK) {
+            $archivo = $_FILES['archivo'];
             $extension = strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION));
+            $nombre_original = $archivo['name'];
+            $tamano = $archivo['size'];
             
-            if ($extension !== 'pdf') {
-                $error = "❌ Solo se permiten archivos PDF";
-            } elseif ($archivo['size'] > 10 * 1024 * 1024) {
-                $error = "❌ El PDF no puede superar los 10MB";
-            } else {
+            // Validar extensión
+            if (!array_key_exists($extension, $extensiones_permitidas)) {
+                $error = "❌ Formato no permitido. Usa: PDF, Word (.doc, .docx) o Excel (.xls, .xlsx)";
+            } 
+            // Validar tamaño
+            elseif ($tamano > $max_size) {
+                $error = "❌ El archivo no puede superar los 10MB";
+            } 
+            else {
                 // Eliminar archivo anterior
                 if ($item['archivo_url'] && file_exists('../../' . $item['archivo_url'])) {
                     unlink('../../' . $item['archivo_url']);
                 }
                 
-                // ✅ CORREGIDO: Carpeta específica para políticas
+                // Guardar nuevo archivo
                 $carpeta = '../../uploads/documentos/politicas/';
                 if (!file_exists($carpeta)) {
                     mkdir($carpeta, 0777, true);
                 }
                 
-                $nombre_archivo = time() . '_' . uniqid() . '.pdf';
+                $nombre_archivo = 'politica_' . time() . '_' . uniqid() . '.' . $extension;
                 $ruta_destino = $carpeta . $nombre_archivo;
                 $ruta_db = 'uploads/documentos/politicas/' . $nombre_archivo;
                 
                 if (move_uploaded_file($archivo['tmp_name'], $ruta_destino)) {
-                    // ✅ CORREGIDO: Usar tabla 'politicas'
-                    $stmt = $pdo->prepare("UPDATE politicas SET titulo = ?, descripcion = ?, archivo_url = ? WHERE id = ?");
-                    $stmt->execute([$titulo, $descripcion, $ruta_db, $id]);
+                    $stmt = $pdo->prepare("
+                        UPDATE politicas 
+                        SET titulo = ?, 
+                            descripcion = ?, 
+                            archivo_url = ?,
+                            tipo_archivo = ?,
+                            nombre_original = ?
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([
+                        $titulo, 
+                        $descripcion, 
+                        $ruta_db,
+                        $extensiones_permitidas[$extension],
+                        $nombre_original,
+                        $id
+                    ]);
                     $mensaje = "✅ Política actualizada correctamente";
                     
                     // Recargar datos
@@ -100,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } else {
-            // ✅ CORREGIDO: Usar tabla 'politicas'
+            // Solo actualizar título y descripción
             $stmt = $pdo->prepare("UPDATE politicas SET titulo = ?, descripcion = ? WHERE id = ?");
             $stmt->execute([$titulo, $descripcion, $id]);
             $mensaje = "✅ Política actualizada correctamente";
@@ -112,6 +150,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// ============================================
+// OBTENER ICONO SEGÚN TIPO DE ARCHIVO
+// ============================================
+function getIconoArchivo($archivo_url) {
+    $icono = 'fa-file';
+    $color = '#3498db';
+    $texto = 'Documento';
+    
+    if (strpos($archivo_url, '.pdf') !== false) {
+        $icono = 'fa-file-pdf';
+        $color = '#e74c3c';
+        $texto = 'PDF';
+    } elseif (strpos($archivo_url, '.doc') !== false) {
+        $icono = 'fa-file-word';
+        $color = '#2980b9';
+        $texto = 'Word';
+    } elseif (strpos($archivo_url, '.xls') !== false) {
+        $icono = 'fa-file-excel';
+        $color = '#27ae60';
+        $texto = 'Excel';
+    }
+    
+    return ['icono' => $icono, 'color' => $color, 'texto' => $texto];
+}
+
+$info_archivo = getIconoArchivo($item['archivo_url'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -144,7 +209,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border: 1px solid #d3d3d3;
             border-radius: 8px;
             font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            transition: all 0.3s ease;
         }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #173742;
+            box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+        }
+        .form-group textarea { resize: vertical; min-height: 80px; }
         .btn-guardar {
             background: linear-gradient(135deg, #173742, #1a4a55);
             color: white;
@@ -155,6 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
             width: 100%;
             transition: all 0.3s ease;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         .btn-guardar:hover {
             transform: translateY(-2px);
@@ -169,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: inline-block;
             margin-bottom: 20px;
             transition: all 0.3s ease;
+            font-size: 14px;
         }
         .btn-volver:hover {
             background: #ffc107;
@@ -178,30 +257,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .mensaje-exito {
             background: #d5f5e3;
             color: #1a7a3a;
-            padding: 12px;
+            padding: 12px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
             border-left: 4px solid #27ae60;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .mensaje-error {
             background: #fadbd8;
             color: #922b21;
-            padding: 12px;
+            padding: 12px 16px;
             border-radius: 8px;
             margin-bottom: 20px;
             border-left: 4px solid #e74c3c;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .info-text { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
-        .pdf-actual {
+        .archivo-actual {
             background: #f8f9fa;
-            padding: 15px;
+            padding: 15px 20px;
             border-radius: 8px;
             margin-bottom: 20px;
-            text-align: center;
             border: 1px dashed #d3d3d3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .pdf-actual i { font-size: 24px; color: #e74c3c; }
-        .pdf-actual a { color: #173742; font-weight: 500; }
+        .archivo-actual .info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .archivo-actual .info i { 
+            font-size: 28px; 
+        }
+        .archivo-actual .info .nombre {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .archivo-actual .info .tipo {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .archivo-actual .btn-ver {
+            background: #173742;
+            color: white;
+            padding: 6px 16px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+        .archivo-actual .btn-ver:hover {
+            background: #445960;
+            transform: translateY(-2px);
+        }
+        .badge-tipo {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .text-muted { color: #7f8c8d; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -221,27 +344,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="mensaje-error"><i class="fas fa-exclamation-circle"></i> <?php echo $error; ?></div>
             <?php endif; ?>
             
+            <!-- Mostrar archivo actual -->
             <?php if ($item['archivo_url']): ?>
-                <div class="pdf-actual">
-                    <i class="fas fa-file-pdf"></i><br>
-                    <label>PDF actual:</label><br>
-                    <a href="../../<?php echo $item['archivo_url']; ?>" target="_blank">📄 Ver PDF</a>
+                <div class="archivo-actual">
+                    <div class="info">
+                        <i class="fas <?php echo $info_archivo['icono']; ?>" style="color: <?php echo $info_archivo['color']; ?>;"></i>
+                        <div>
+                            <div class="nombre"><?php echo htmlspecialchars($item['nombre_original'] ?? basename($item['archivo_url'])); ?></div>
+                            <div class="tipo">
+                                <span class="badge-tipo" style="background: <?php echo $info_archivo['color']; ?>20; color: <?php echo $info_archivo['color']; ?>; border: 1px solid <?php echo $info_archivo['color']; ?>;">
+                                    <i class="fas <?php echo $info_archivo['icono']; ?>"></i> <?php echo $info_archivo['texto']; ?>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="../../<?php echo $item['archivo_url']; ?>" target="_blank" class="btn-ver">
+                        <i class="fas fa-eye"></i> Ver
+                    </a>
                 </div>
             <?php endif; ?>
             
             <form method="POST" action="" enctype="multipart/form-data">
                 <div class="form-group">
-                    <label>Título</label>
-                    <input type="text" name="titulo" value="<?php echo htmlspecialchars($item['titulo']); ?>" required>
+                    <label><i class="fas fa-heading"></i> Título <span style="color: #e74c3c;">*</span></label>
+                    <input type="text" name="titulo" value="<?php echo htmlspecialchars($item['titulo']); ?>" required placeholder="Ej: Política de Seguridad 2025">
                 </div>
                 <div class="form-group">
-                    <label>Descripción</label>
-                    <textarea name="descripcion" rows="3"><?php echo htmlspecialchars($item['descripcion']); ?></textarea>
+                    <label><i class="fas fa-align-left"></i> Descripción</label>
+                    <textarea name="descripcion" rows="3" placeholder="Breve descripción de la política"><?php echo htmlspecialchars($item['descripcion']); ?></textarea>
                 </div>
                 <div class="form-group">
-                    <label>Archivo PDF (opcional, dejar en blanco para mantener)</label>
-                    <input type="file" name="archivo_pdf" accept=".pdf">
-                    <div class="info-text">Solo archivos PDF. Máximo 10MB</div>
+                    <label><i class="fas fa-file"></i> Nuevo archivo (opcional)</label>
+                    <input type="file" name="archivo" accept=".pdf,.doc,.docx,.xls,.xlsx">
+                    <div class="info-text">
+                        <i class="fas fa-info-circle"></i> 
+                        Formatos permitidos: PDF, Word (.doc, .docx), Excel (.xls, .xlsx). Máximo 10MB<br>
+                        <span class="text-muted">Dejar vacío para mantener el archivo actual.</span>
+                    </div>
                 </div>
                 <button type="submit" class="btn-guardar">
                     <i class="fas fa-save"></i> Guardar Cambios

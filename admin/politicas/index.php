@@ -3,39 +3,17 @@
 require_once '../../includes/config.php';
 require_once '../../includes/auth_check.php';
 
-// ✅ VERIFICAR ACCESO
+// ✅ VERIFICAR ACCESO: Administradores (rol_id = 1) o Supervisores (rol_id = 2)
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: ../login.php');
     exit();
 }
 
 $rol_usuario = $_SESSION['rol'] ?? 3;
-$usuario_id = $_SESSION['usuario_id'];
 
-// Admin: acceso total
-if ($rol_usuario == 1) {
-    // Tiene acceso
-} 
-// Supervisor: verificar permiso
-elseif ($rol_usuario == 2) {
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*) as tiene_permiso 
-        FROM permisos_usuarios pu
-        JOIN modulos m ON pu.modulo_id = m.id
-        WHERE pu.usuario_id = ? AND m.nombre = 'politicas' AND m.activo = 1
-    ");
-    $stmt->execute([$usuario_id]);
-    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$permiso || $permiso['tiene_permiso'] == 0) {
-        $_SESSION['error'] = "❌ No tienes permiso para gestionar políticas";
-        header('Location: ../index.php');
-        exit();
-    }
-} 
-// Usuario normal: sin acceso
-else {
-    header('Location: ../index.php');
+if ($rol_usuario != 1 && $rol_usuario != 2) {
+    $_SESSION['error'] = "❌ No tienes permiso para gestionar permisos de capacitaciones";
+    header('Location: ../../index.php');
     exit();
 }
 
@@ -242,6 +220,12 @@ $politicas = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         .empty-state i { font-size: 48px; color: #d3d3d3; margin-bottom: 15px; }
         .empty-state h3 { color: #2c3e50; margin-bottom: 5px; }
+
+        /* Badges para tipos de archivo */
+        .badge-pdf { background: #fadbd8; color: #922b21; border: 1px solid #e74c3c; }
+        .badge-word { background: #d6eaf8; color: #1a5276; border: 1px solid #2980b9; }
+        .badge-excel { background: #d5f5e3; color: #1a7a3a; border: 1px solid #27ae60; }
+        .badge-documento { background: #e8f0fe; color: #173742; border: 1px solid #3498db; }
     </style>
 </head>
 <body>
@@ -280,9 +264,9 @@ $politicas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <textarea name="descripcion" rows="2" placeholder="Breve descripción de la política"></textarea>
                 </div>
                 <div class="form-group">
-                    <label><i class="fas fa-file-pdf"></i> Archivo PDF</label>
-                    <input type="file" name="archivo_pdf" accept=".pdf" required>
-                    <div class="info-text">Solo archivos PDF. Máximo 10MB</div>
+                    <label><i class="fas fa-file"></i> Archivo</label>
+                    <input type="file" name="archivo" accept=".pdf,.doc,.docx,.xls,.xlsx" required>
+                    <div class="info-text">Formatos permitidos: PDF, Word (.doc, .docx), Excel (.xls, .xlsx). Máximo 10MB</div>
                 </div>
                 <button type="submit" class="btn-guardar">
                     <i class="fas fa-save"></i> Guardar política
@@ -316,7 +300,7 @@ $politicas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th style="min-width: 150px;">Descripción</th>
                                 <th style="width: 100px;">Tipo</th>
                                 <th style="width: 100px;">Estado</th>
-                                <th style="width: 180px;">Acciones</th>
+                                <th style="width: 200px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -326,10 +310,34 @@ $politicas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td>
                                         <strong><?php echo htmlspecialchars($doc['titulo']); ?></strong>
                                     </td>
-                                    <td><?php echo htmlspecialchars($doc['descripcion']); ?></td>
+                                    <td><?php echo htmlspecialchars($doc['descripcion'] ?? ''); ?></td>
                                     <td>
-                                        <span class="badge badge-pdf">
-                                            <i class="fas fa-file-pdf"></i> PDF
+                                        <?php
+                                        $archivo_url = $doc['archivo_url'] ?? '';
+                                        $icono = 'fa-file';
+                                        $color = '#3498db';
+                                        $tipo_texto = 'Documento';
+                                        $badge_class = 'badge-documento';
+                                        
+                                        if (strpos($archivo_url, '.pdf') !== false) {
+                                            $icono = 'fa-file-pdf';
+                                            $color = '#e74c3c';
+                                            $tipo_texto = 'PDF';
+                                            $badge_class = 'badge-pdf';
+                                        } elseif (strpos($archivo_url, '.doc') !== false || strpos($archivo_url, '.docx') !== false) {
+                                            $icono = 'fa-file-word';
+                                            $color = '#2980b9';
+                                            $tipo_texto = 'Word';
+                                            $badge_class = 'badge-word';
+                                        } elseif (strpos($archivo_url, '.xls') !== false || strpos($archivo_url, '.xlsx') !== false) {
+                                            $icono = 'fa-file-excel';
+                                            $color = '#27ae60';
+                                            $tipo_texto = 'Excel';
+                                            $badge_class = 'badge-excel';
+                                        }
+                                        ?>
+                                        <span class="badge" style="background: <?php echo $color; ?>20; color: <?php echo $color; ?>; border: 1px solid <?php echo $color; ?>; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                                            <i class="fas <?php echo $icono; ?>"></i> <?php echo $tipo_texto; ?>
                                         </span>
                                     </td>
                                     <td>
@@ -339,6 +347,10 @@ $politicas = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         </span>
                                     </td>
                                     <td>
+                                        <!-- Ver archivo -->
+                                        <a href="../../<?php echo $doc['archivo_url']; ?>" target="_blank" class="btn-accion btn-ver" title="Ver archivo">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
                                         <a href="?cambiar_estado=<?php echo $doc['id']; ?>" class="btn-accion btn-estado" title="Cambiar estado">
                                             <i class="fas fa-toggle-on"></i>
                                         </a>
