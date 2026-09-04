@@ -195,7 +195,7 @@ if (empty($slides)) {
                 
                 <!-- Control de VH -->
                 <div class="app-card" 
-                     data-url="https://script.google.com/macros/s/AKfycbxloW5450LWibJOk2iwebj9kmlHGiwLJpMumPwhT0LQTI1164kdZM5b_vz1Vf3YJ7VW/exec" 
+                     data-url="https://script.google.com/macros/s/AKfycbwcv3uV-xG9jExOJJBIHt8m2e61gRDz5MLIxDluLZGZkAJvjebWVi6-csp2dO7d1834/exec" 
                      data-name="Control de VH" 
                      data-requiere-login="false">
                     <div class="app-icon">
