@@ -248,7 +248,7 @@ if (empty($slides)) {
                     </div>
                     <div class="app-info">
                         <h3 class="app-name">Página Web</h3>
-                        <p class="app-description">Sitio web oficial</p>
+                        <p class="app-description">www.armotor.com</p>
                     </div>
                     <i class="fas fa-arrow-right app-arrow"></i>
                 </div>
