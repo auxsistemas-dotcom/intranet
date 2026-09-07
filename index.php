@@ -420,12 +420,27 @@ if (empty($slides)) {
             <div class="footer-logo">
                 <span>INTRANET</span>
             </div>
+            
+            <!-- REDES SOCIALES -->
+            <div class="footer-social">
+                <a href="https://www.instagram.com/armotor/" target="_blank" class="social-icon" title="Instagram">
+                    <i class="fab fa-instagram"></i>
+                </a>
+                <a href="https://www.facebook.com/armotor" target="_blank" class="social-icon" title="Facebook">
+                    <i class="fab fa-facebook-f"></i>
+                </a>
+                <a href="https://wa.me/573148901991" target="_blank" class="social-icon" title="WhatsApp">
+                    <i class="fab fa-whatsapp"></i>
+                </a>
+            </div>
+            
             <div class="footer-links">
                 <a href="index.php">Inicio</a>
                 <a href="index.php#aplicaciones">Aplicaciones</a>
                 <a href="index.php#documentacion">Documentación</a>
                 <a href="mailto:sistemas@armotor.com">Soporte</a>
             </div>
+            
             <div class="footer-copyright">
                 <p>© 2026 ARMOTOR - Todos los derechos reservados</p>
             </div>

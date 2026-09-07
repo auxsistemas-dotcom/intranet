@@ -138,7 +138,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     if ($tipo == 'nueva') {
         $mensaje_html .= '
                 <p style="text-align: center;">
-                    <a href="' . $url_base . 'admin/gestion_permisos' . '" class="btn" style="color: white;">
+                    <a href="' . $url_base . 'admin' . '" class="btn" style="color: white;">
                         🔍 Ver y Gestionar Solicitud
                     </a>
                 </p>

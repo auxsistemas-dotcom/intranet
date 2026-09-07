@@ -443,6 +443,7 @@ body {
     color: var(--white);
     margin-top: 80px;
     padding: 40px 0 24px;
+    border-top: 3px solid var(--primary-dark);
 }
 
 .footer-content {
@@ -469,6 +470,62 @@ body {
     font-size: 18px;
 }
 
+/* ============================================ */
+/* REDES SOCIALES - NUEVO                        */
+/* ============================================ */
+.footer-social {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    color: var(--gray-light);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    font-size: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.social-icon:hover {
+    transform: translateY(-3px);
+    color: white;
+    border-color: transparent;
+}
+
+/* Colores al hacer hover */
+.social-icon.instagram:hover {
+    background: linear-gradient(135deg, #405DE6, #5851DB, #833AB4, #C13584, #E1306C, #FD1D1D);
+    box-shadow: 0 4px 15px rgba(225, 48, 108, 0.4);
+}
+
+.social-icon.facebook:hover {
+    background: #1877F2;
+    box-shadow: 0 4px 15px rgba(24, 119, 242, 0.4);
+}
+
+.social-icon.whatsapp:hover {
+    background: #25D366;
+    box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+}
+
+.social-icon.youtube:hover {
+    background: #FF0000;
+    box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4);
+}
+
+.social-icon.linkedin:hover {
+    background: #0A66C2;
+    box-shadow: 0 4px 15px rgba(10, 102, 194, 0.4);
+}
+
 .footer-links {
     display: flex;
     gap: 30px;
@@ -478,6 +535,7 @@ body {
     color: var(--gray-light);
     text-decoration: none;
     transition: color 0.3s;
+    font-size: 14px;
 }
 
 .footer-links a:hover {
@@ -654,13 +712,20 @@ body {
         gap: 15px;
     }
     
+    /* ===== FOOTER RESPONSIVE ===== */
     .footer-content {
         flex-direction: column;
         text-align: center;
+        gap: 20px;
     }
     
     .footer-links {
         flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+    }
+    
+    .footer-social {
         justify-content: center;
     }
 }
