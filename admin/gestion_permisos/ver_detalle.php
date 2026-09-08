@@ -773,7 +773,7 @@ date_default_timezone_set('America/Bogota');
                         <span class="highlight"><?php echo $solicitud['estado'] == 'aprobado' ? 'Aprobado' : 'Rechazado'; ?>:</span>
                         <?php echo htmlspecialchars($solicitud['aprobador_nombre'] ?? 'Sistema'); ?>
                         <span class="text-muted">
-                            (<?php echo date('d/m/Y H:i', strtotime($solicitud['aprobado_el'])); ?>)
+                            <?php echo date('d/m/Y H:i', strtotime($solicitud['aprobado_el'])); ?>
                         </span>
                     </span>
                 <?php endif; ?>
