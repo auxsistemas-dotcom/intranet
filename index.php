@@ -423,13 +423,13 @@ if (empty($slides)) {
             
             <!-- REDES SOCIALES -->
             <div class="footer-social">
-                <a href="https://www.instagram.com/armotor/" target="_blank" class="social-icon" title="Instagram">
+                <a href="https://www.instagram.com/armotorcolombia" target="_blank" class="social-icon" title="Instagram">
                     <i class="fab fa-instagram"></i>
                 </a>
-                <a href="https://www.facebook.com/armotor" target="_blank" class="social-icon" title="Facebook">
+                <a href="https://www.facebook.com/people/Armotor-Colombia/61579021073953/#" target="_blank" class="social-icon" title="Facebook">
                     <i class="fab fa-facebook-f"></i>
                 </a>
-                <a href="https://wa.me/573148901991" target="_blank" class="social-icon" title="WhatsApp">
+                <a href="https://wa.me/573104517716" target="_blank" class="social-icon" title="WhatsApp">
                     <i class="fab fa-whatsapp"></i>
                 </a>
             </div>

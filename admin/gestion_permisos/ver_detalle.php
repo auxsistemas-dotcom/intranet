@@ -815,22 +815,6 @@ date_default_timezone_set('America/Bogota');
                 </div>
             </div>
         <?php endif; ?>
-
-        <!-- ============================================ -->
-        <!-- INFO ADICIONAL (SOLO ADMIN) -->
-        <!-- ============================================ -->
-        <?php if ($es_admin): ?>
-            <div class="card" style="background: #f8f9fa; padding: 15px 20px;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 12px; color: #7f8c8d;">
-                    <div><strong>ID:</strong> <?php echo $solicitud['id']; ?></div>
-                    <div><strong>Usuario ID:</strong> <?php echo $solicitud['usuario_id']; ?></div>
-                    <div><strong>Jefe ID:</strong> <?php echo $solicitud['jefe_inmediato'] ?? 'N/A'; ?></div>
-                    <div><strong>Archivo:</strong> <?php echo !empty($solicitud['archivo']) ? 'Sí' : 'No'; ?></div>
-                    <div><strong>Aprobado por:</strong> <?php echo $solicitud['aprobado_por'] ?? 'N/A'; ?></div>
-                    <div><strong>Fecha aprobación:</strong> <?php echo $solicitud['aprobado_el'] ? date('d/m/Y H:i', strtotime($solicitud['aprobado_el'])) : 'N/A'; ?></div>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
 
     <!-- ============================================ -->
