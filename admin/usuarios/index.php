@@ -446,5 +446,33 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <?php endif; ?>
         </div>
     </div>
+    <script>
+        // Ocultar las notificaciones de la tabla
+        document.addEventListener('DOMContentLoaded', function() {
+            // Ocultar mensaje de éxito después de 2 segundos
+            const mensajeExito = document.querySelector('.mensaje-exito');
+            if (mensajeExito) {
+                setTimeout(function() {
+                    mensajeExito.style.transition = 'opacity 0.5s ease';
+                    mensajeExito.style.opacity = '0';
+                    setTimeout(function() {
+                        mensajeExito.style.display = 'none';
+                    }, 500);
+                }, 2000);
+            }
+
+            // Ocultar mensaje de error después de 2 segundos
+            const mensajeError = document.querySelector('.mensaje-error');
+            if (mensajeError) {
+                setTimeout(function() {
+                    mensajeError.style.transition = 'opacity 0.5s ease';
+                    mensajeError.style.opacity = '0';
+                    setTimeout(function() {
+                        mensajeError.style.display = 'none';
+                    }, 500);
+                }, 2000);
+            }
+        });
+    </script>
 </body>
 </html>

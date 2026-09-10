@@ -177,6 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $perfil_usuario = trim($_POST['perfil_usuario'] ?? '');
     $cargo = trim($_POST['cargo'] ?? '');
     $sede = trim($_POST['sede'] ?? '');
+    $cod_asesor = trim($_POST['cod_asesor'] ?? '');
+    $cod_asesor = !empty($cod_asesor) ? $cod_asesor : null;
     
     if (empty($nombre_completo) || empty($usuario_nombre)) {
         $error = "❌ Nombre completo y usuario son obligatorios";
@@ -198,7 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                            telefono = ?,
                                            perfil_usuario = ?,
                                            cargo = ?,
-                                           sede = ?
+                                           sede = ?,
+                                           cod_asesor = ?
                                            WHERE id = ?");
                     $stmt->execute([
                         $nombre_completo, 
@@ -212,6 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $perfil_usuario,
                         $cargo,
                         $sede,
+                        $cod_asesor,
                         $id
                     ]);
                     $mensaje = "✅ Usuario actualizado correctamente";
@@ -227,7 +231,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                        telefono = ?,
                                        perfil_usuario = ?,
                                        cargo = ?,
-                                       sede = ?
+                                       sede = ?,
+                                       cod_asesor = ?
                                        WHERE id = ?");
                 $stmt->execute([
                     $nombre_completo, 
@@ -240,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $perfil_usuario,
                     $cargo,
                     $sede,
+                    $cod_asesor,
                     $id
                 ]);
                 $mensaje = "✅ Usuario actualizado correctamente";
@@ -601,6 +607,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
+                <!-- ✅ CHECKBOX ASESOR + CAMPO CÓDIGO (EN LÍNEA) -->
+                <div class="form-group" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                    
+                    <!-- Checkbox -->
+                    <div class="checkbox-group" style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                        <input type="checkbox" name="es_asesor" id="es_asesor" onchange="toggleCodAsesor()" <?php echo (!empty($usuario['cod_asesor'])) ? 'checked' : ''; ?>>
+                        <label for="es_asesor" style="margin: 0; cursor: pointer; font-weight: 500;">Es Asesor</label>
+                    </div>
+                    
+                    <!-- Campo Código (oculto por defecto) -->
+                    <div id="campo_cod_asesor" style="display: <?php echo (!empty($usuario['cod_asesor'])) ? 'flex' : 'none'; ?>; align-items: center; gap: 10px;">
+                        <label for="cod_asesor" style="margin: 0; font-weight: 500; white-space: nowrap;">Código:</label>
+                        <input type="text" name="cod_asesor" id="cod_asesor"
+                            value="<?php echo htmlspecialchars($usuario['cod_asesor'] ?? ''); ?>" 
+                            placeholder="0000" 
+                            maxlength="4"
+                            pattern="[0-9]{1,4}"
+                            style="width: 120px; padding: 8px 12px; text-align: center;"
+                            title="Ingresa hasta 4 dígitos">
+                    </div>
+                </div>
+
                 <!-- Rol y estado -->
                 <div class="form-row">
                     <div class="form-group">
@@ -664,6 +692,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     cargoSelect.appendChild(option);
                 });
+            }
+        }
+
+        // ============================================
+        // MOSTRAR/OCULTAR CAMPO CÓDIGO ASESOR
+        // ============================================
+
+        function toggleCodAsesor() {
+            const checkbox = document.getElementById('es_asesor');
+            const campo = document.getElementById('campo_cod_asesor');
+            
+            if (checkbox.checked) {
+                campo.style.display = 'flex';
+            } else {
+                campo.style.display = 'none';
+                // Limpiar el campo si se desmarca
+                document.getElementById('cod_asesor').value = '';
             }
         }
 
