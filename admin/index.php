@@ -48,6 +48,7 @@ $modulos_admin = [
     ['url' => 'logistica/index.php', 'icono' => 'fa-map-marked-alt', 'nombre' => 'Logística', 'modulo' => 'Logistica'],
     ['url' => 'gestion_humana/index.php', 'icono' => 'fa-users-cog', 'nombre' => 'Gestión Humana', 'modulo' => 'Gestion Humana'],
     ['url' => 'gestion_permisos/index.php', 'icono' => 'fa-calendar-check', 'nombre' => 'Gestión de Permisos', 'modulo' => 'Gestion Permisos'],
+    ['url' => 'comercial/index.php', 'icono' => 'fa-handshake', 'nombre' => 'Comercial', 'modulo' => 'Comercial'],
 ];
 
 // Obtener estadísticas

@@ -476,6 +476,21 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
                 </div>
                 <i class="fas fa-arrow-right app-arrow"></i>
             </div>
+
+            <!-- Comercial -->
+            <div class="app-card" 
+                data-url="comercial/index.php" 
+                data-name="Comercial" 
+                data-requiere-login="false">
+                <div class="app-icon">
+                    <i class="fas fa-handshake"></i>
+                </div>
+                <div class="app-info">
+                    <h3 class="app-name">Comercial</h3>
+                    <p class="app-description">Gestión de solicitudes - Comisiones</p>
+                </div>
+                <i class="fas fa-arrow-right app-arrow"></i>
+            </div>
         </div>
     </div>
 </main>
