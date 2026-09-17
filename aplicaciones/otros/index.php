@@ -412,11 +412,6 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
         <div class="welcome-header">
             <h1><i class="fas fa-th-large"></i> Otras Aplicaciones</h1>
             <p>Accesos adicionales y herramientas externas</p>
-            <?php if (isset($_SESSION['usuario_id'])): ?>
-                <div class="user-badge">
-                    <i class="fas fa-user"></i> <?php echo htmlspecialchars($nombre_usuario); ?>
-                </div>
-            <?php endif; ?>
         </div>
         
         <div class="apps-grid">

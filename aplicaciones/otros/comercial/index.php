@@ -286,6 +286,9 @@ $nombre_mes = $meses_espanol[$mes_actual ?? date('n')];
         .modulo-icon.estadisticas {
             background: linear-gradient(135deg, #3498db, #5dade2);
         }
+        .modulo-icon.reclamos {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+        }
         .modulo-info h3 {
             font-size: 19px;
             color: #12232b;
@@ -459,6 +462,20 @@ $nombre_mes = $meses_espanol[$mes_actual ?? date('n')];
                     <div class="modulo-info">
                         <h3>Estadísticas</h3>
                         <p>Mira cómo te fue este mes y tu evolución</p>
+                    </div>
+                    <span class="btn-entrar">
+                        Entrar <i class="fas fa-arrow-right"></i>
+                    </span>
+                </a>
+
+                <!-- ✅ NUEVO: Reclamos -->
+                <a href="reclamos/index.php" class="modulo-card">
+                    <div class="modulo-icon reclamos">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <div class="modulo-info">
+                        <h3>Reclamos</h3>
+                        <p>Reporta inconformidades sobre tus comisiones</p>
                     </div>
                     <span class="btn-entrar">
                         Entrar <i class="fas fa-arrow-right"></i>

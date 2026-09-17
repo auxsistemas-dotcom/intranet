@@ -55,6 +55,12 @@ $modulos_comercial = [
         'nombre' => 'Estadísticas',
         'descripcion' => 'Ver estadísticas globales de todos los asesores'
     ],
+    [
+        'url' => 'reclamos/index.php',
+        'icono' => 'fa-comments',
+        'nombre' => 'Reclamos',
+        'descripcion' => 'Atender inconformidades de los asesores'
+    ],
 ];
 ?>
 <!DOCTYPE html>
