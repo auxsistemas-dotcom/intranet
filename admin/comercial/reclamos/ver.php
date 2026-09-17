@@ -169,6 +169,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if ($reclamo['estado'] == 'pendiente') {
                     $stmt = $pdo->prepare("UPDATE reclamos SET estado = 'en_revision', actualizado_el = NOW() WHERE id = ?");
                     $stmt->execute([$id]);
+                    
+                    // ✅ Notificar al asesor del cambio de estado automático
+                    try {
+                        notificarCambioEstado($id, 'pendiente', 'en_revision');
+                    } catch (Exception $e) {
+                        error_log("⚠️ Error al notificar cambio automático del reclamo #$id: " . $e->getMessage());
+                    }
                 }
                 
                 header("Location: ver.php?id=" . $id);

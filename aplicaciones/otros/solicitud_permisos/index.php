@@ -88,7 +88,7 @@ $estados = [
         .btn-volver {
             background: #445960;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 15px;
             text-decoration: none;
             border-radius: 8px;
             transition: all 0.3s ease;
