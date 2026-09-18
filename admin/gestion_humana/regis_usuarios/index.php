@@ -3,7 +3,7 @@
 require_once '../../../includes/config.php';
 require_once '../../../includes/auth_check.php';
 
-// ✅ VERIFICAR ACCESO: SOLO Administradores (rol_id = 1)
+// ✅ VERIFICAR ACCESO: Administradores (rol_id = 1) o Supervisores (rol_id = 2)
 if (!isset($_SESSION['usuario_id'])) {
     header('Location: ../login.php');
     exit();
@@ -11,10 +11,9 @@ if (!isset($_SESSION['usuario_id'])) {
 
 $rol_usuario = $_SESSION['rol'] ?? 3;
 
-// Solo administradores pueden ver el registro de usuarios
-if ($rol_usuario != 1) {
-    $_SESSION['error'] = "❌ No tienes permiso para ver el registro de usuarios";
-    header('Location: ../index.php');
+if ($rol_usuario != 1 && $rol_usuario != 2) {
+    $_SESSION['error'] = "❌ No tienes permiso para gestionar permisos de capacitaciones";
+    header('Location: ../../index.php');
     exit();
 }
 

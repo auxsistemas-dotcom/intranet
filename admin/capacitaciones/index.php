@@ -111,7 +111,7 @@ $areas_select = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .header .container { display: flex; justify-content: space-between; align-items: center; }
         .logo h1 { color: white; font-size: 24px; }
         .logo span { color: #445960; }
-        .btn-volver { background: #445960; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; }
+        .btn-volver { background: #445960; color: white; padding: 8px 15px; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; }
         .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
         .card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .card h2 { margin-bottom: 20px; border-left: 4px solid #173742; padding-left: 15px; }
@@ -189,7 +189,7 @@ $areas_select = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .btn-permisos {
             background: #8e44ad;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 15px;
             text-decoration: none;
             border-radius: 8px;
             transition: all 0.3s ease;
