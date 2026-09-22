@@ -45,7 +45,10 @@ $tipos_comisiones = [
     'usados' => 'Usados',
     'accesorios' => 'Accesorios',
     'incentivos' => 'Incentivos',
-    'financieras' => 'Financieras'
+    'financieras' => 'Financieras',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas'
 ];
 
 // ============================================
@@ -57,22 +60,18 @@ for ($i = 2026; $i <= intval(date('Y')); $i++) {
 }
 
 // ============================================
-// MES VENCIDO (por defecto)
+// MES ACTUAL (por defecto)
 // ============================================
-$mes_vencido = date('n') - 1;
-$anio_vencido = date('Y');
-if ($mes_vencido < 1) {
-    $mes_vencido = 12;
-    $anio_vencido = date('Y') - 1;
-}
+$mes_actual = date('n');
+$anio_actual = date('Y');
 
 // ============================================
 // VARIABLES DEL FORMULARIO
 // ============================================
 $error = '';
 $tipo_comision = '';
-$mes = $mes_vencido;
-$anio = $anio_vencido;
+$mes = $mes_actual;
+$anio = $anio_actual;
 $asunto = '';
 $mensaje = '';
 
@@ -96,17 +95,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($archivo['error'] !== UPLOAD_ERR_OK) {
             $error = "❌ Error al subir la imagen (código: " . $archivo['error'] . ")";
         } else {
-            // Validar tamaño máximo (5 MB)
             $max_size = 5 * 1024 * 1024;
             if ($archivo['size'] > $max_size) {
                 $error = "❌ La imagen no debe pesar más de 5 MB";
             } else {
-                // Validar extensión
                 $ext = strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
                     $error = "❌ Solo se permiten imágenes JPG, JPEG o PNG";
                 } else {
-                    // Validar MIME real
                     $finfo = finfo_open(FILEINFO_MIME_TYPE);
                     $mime = finfo_file($finfo, $archivo['tmp_name']);
                     finfo_close($finfo);
@@ -114,7 +110,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!in_array($mime, ['image/jpeg', 'image/jpg', 'image/png'])) {
                         $error = "❌ El archivo no es una imagen válida";
                     } else {
-                        // Guardar temporalmente la info para usarla después del INSERT
                         $imagen_tmp = $archivo['tmp_name'];
                         $imagen_ext = $ext;
                     }
@@ -123,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    // Validaciones de texto (solo si no hubo error con la imagen)
+    // Validaciones de texto
     if (empty($error)) {
         if (empty($tipo_comision) || !array_key_exists($tipo_comision, $tipos_comisiones)) {
             $error = "❌ Debes seleccionar un tipo de comisión válido";
@@ -700,7 +695,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </label>
                     <textarea 
                         name="mensaje" 
-                        placeholder="Describe tu inconformidad con el mayor detalle posible..."
+                        id="inputMensaje"
+                        placeholder="Describe tu inconformidad con el mayor detalle posible... (puedes pegar imágenes con Ctrl+V)"
                         required
                     ><?php echo htmlspecialchars($mensaje); ?></textarea>
                     <div class="info-text">
@@ -798,6 +794,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 pesoImagen.textContent = '';
                 previewImagen.style.display = 'none';
                 btnAdjuntar.classList.remove('activo');
+            });
+        }
+
+        // ============================================
+        // PEGAR IMAGEN DESDE EL PORTAPAPELES (Ctrl+V)
+        // ============================================
+        const inputMensajePaste = document.getElementById('inputMensaje');
+
+        if (inputMensajePaste && inputImagen) {
+            inputMensajePaste.addEventListener('paste', function(e) {
+                // Obtener los items del portapapeles
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                
+                let imagenEncontrada = null;
+                
+                // Buscar si hay una imagen en el portapapeles
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        imagenEncontrada = items[i].getAsFile();
+                        break;
+                    }
+                }
+                
+                // Si hay imagen, procesarla
+                if (imagenEncontrada) {
+                    e.preventDefault(); // Evitar pegar la imagen como "texto"
+                    
+                    // Validar tamaño (5 MB)
+                    if (imagenEncontrada.size > 5 * 1024 * 1024) {
+                        alert('❌ La imagen no debe pesar más de 5 MB');
+                        return;
+                    }
+                    
+                    // Validar tipo
+                    const tiposPermitidos = ['image/jpeg', 'image/jpg', 'image/png'];
+                    if (!tiposPermitidos.includes(imagenEncontrada.type)) {
+                        alert('❌ Solo se permiten imágenes JPG, JPEG o PNG');
+                        return;
+                    }
+                    
+                    // Crear un objeto DataTransfer para asignar el archivo al input
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(imagenEncontrada);
+                    inputImagen.files = dataTransfer.files;
+                    
+                    // Disparar el evento change para que se muestre la preview
+                    const event = new Event('change', { bubbles: true });
+                    inputImagen.dispatchEvent(event);
+                }
+                // Si no hay imagen, dejar que pegue el texto normalmente
             });
         }
     </script>

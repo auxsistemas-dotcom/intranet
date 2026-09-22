@@ -82,7 +82,16 @@ $meses = [
 // ============================================
 // TIPOS DE COMISIONES PERMITIDOS
 // ============================================
-$tipos_permitidos = ['matriculas', 'usados', 'financieras', 'accesorios', 'incentivos'];
+$tipos_permitidos = [
+    'matriculas', 
+    'usados', 
+    'financieras', 
+    'accesorios', 
+    'incentivos',
+    'polizas',
+    'integralidad',
+    'retomas'
+];
 
 // ============================================
 // CAPTURAR DATOS DEL POST
@@ -197,7 +206,7 @@ try {
             'vin',
             'valor_venta',
             'comision_real',
-            'bono'
+            'observacion'
         ];
     } elseif ($tipo == 'usados') {
         $tabla = 'com_usados';
@@ -239,6 +248,30 @@ try {
             'vehiculos_vendidos',
             'comision_real'
         ];
+    } elseif ($tipo == 'polizas') {
+        $tabla = 'com_polizas';
+        $columnas_requeridas = [
+            'fecha_comision',
+            'cod_vendedor',
+            'observacion',
+            'comision_real'
+        ];
+    } elseif ($tipo == 'integralidad') {
+        $tabla = 'com_integralidad';
+        $columnas_requeridas = [
+            'fecha_comision',
+            'cod_vendedor',
+            'observacion',
+            'comision_real'
+        ];
+    } elseif ($tipo == 'retomas') {
+        $tabla = 'com_retomas';
+        $columnas_requeridas = [
+            'fecha_comision',
+            'cod_vendedor',
+            'observacion',
+            'comision_real'
+        ];
     } else {
         throw new Exception("Tipo de comisión no configurado: $tipo");
     }
@@ -251,13 +284,70 @@ try {
     }
     
     // ============================================
-    // PREPARAR INSERT SEGÚN EL TIPO
+    // VALIDAR VINs DUPLICADOS EN EL EXCEL (solo matrículas)
     // ============================================
     if ($tipo == 'matriculas') {
-        $stmt = $pdo->prepare("
+        $vins_detectados = [];
+        $vin_duplicado = null;
+        
+        foreach ($filas as $fila) {
+            // Saltar filas vacías
+            if (empty($fila[$columnas['cod_vendedor']])) {
+                continue;
+            }
+            
+            $vin = trim($fila[$columnas['vin']] ?? '');
+            
+            // Ignorar VINs vacíos
+            if (empty($vin)) {
+                continue;
+            }
+            
+            if (isset($vins_detectados[$vin])) {
+                $vin_duplicado = $vin;
+                break;
+            }
+            
+            $vins_detectados[$vin] = true;
+        }
+        
+        if ($vin_duplicado !== null) {
+            // Eliminar el archivo subido
+            if (file_exists($ruta_destino)) {
+                unlink($ruta_destino);
+            }
+            
+            throw new Exception("VIN duplicado: $vin_duplicado");
+        }
+    }
+    
+    // ============================================
+    // PREPARAR CONSULTAS SEGÚN EL TIPO
+    // ============================================
+    if ($tipo == 'matriculas') {
+        // Para insertar (VIN nuevo)
+        $stmt_insert = $pdo->prepare("
             INSERT INTO com_matriculas 
-            (fecha_comision, cod_vendedor, cliente, matriculados, modelo, vin, valor_venta, comision_real, bono, archivo_origen) 
+            (fecha_comision, cod_vendedor, cliente, matriculados, modelo, vin, valor_venta, comision_real, observacion, archivo_origen) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        
+        // Para verificar si el VIN ya existe
+        $stmt_check = $pdo->prepare("SELECT id FROM com_matriculas WHERE vin = ? LIMIT 1");
+        
+        // Para actualizar (VIN existente) - ACTUALIZA TODO EXCEPTO archivo_origen
+        $stmt_update = $pdo->prepare("
+            UPDATE com_matriculas 
+            SET 
+                fecha_comision = ?,
+                cod_vendedor = ?,
+                cliente = ?,
+                matriculados = ?,
+                modelo = ?,
+                valor_venta = ?,
+                comision_real = ?,
+                observacion = ?
+            WHERE vin = ?
         ");
     } elseif ($tipo == 'usados') {
         $stmt = $pdo->prepare("
@@ -283,10 +373,29 @@ try {
             (fecha_comision, cod_vendedor, concepto, vehiculos_vendidos, comision_real, archivo_origen) 
             VALUES (?, ?, ?, ?, ?, ?)
         ");
+    } elseif ($tipo == 'polizas') {
+        $stmt = $pdo->prepare("
+            INSERT INTO com_polizas 
+            (fecha_comision, cod_vendedor, observacion, comision_real, archivo_origen) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
+    } elseif ($tipo == 'integralidad') {
+        $stmt = $pdo->prepare("
+            INSERT INTO com_integralidad 
+            (fecha_comision, cod_vendedor, observacion, comision_real, archivo_origen) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
+    } elseif ($tipo == 'retomas') {
+        $stmt = $pdo->prepare("
+            INSERT INTO com_retomas 
+            (fecha_comision, cod_vendedor, observacion, comision_real, archivo_origen) 
+            VALUES (?, ?, ?, ?, ?)
+        ");
     }
     
-    // Contar registros insertados
+    // Contadores
     $insertados = 0;
+    $actualizados = 0;
     $errores = 0;
     
     // Recorrer filas
@@ -300,11 +409,9 @@ try {
             // Procesar fecha (puede venir como número serial de Excel o como texto)
             $fecha_valor = $fila[$columnas['fecha_comision']];
             if (is_numeric($fecha_valor)) {
-                // Convertir número serial de Excel a fecha
                 $fecha = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($fecha_valor);
                 $fecha_comision = $fecha->format('Y-m-d');
             } else {
-                // Intentar parsear como texto
                 $fecha_comision = date('Y-m-d', strtotime($fecha_valor));
             }
             
@@ -319,6 +426,11 @@ try {
             } elseif ($tipo == 'financieras') {
                 $vehiculos_vendidos = intval($fila[$columnas['vehiculos_vendidos']] ?? 0);
                 $comision_real = limpiarNumero($fila[$columnas['comision_real']] ?? 0);
+            } elseif ($tipo == 'matriculas') {
+                $valor_venta = limpiarNumero($fila[$columnas['valor_venta']] ?? 0);
+                $comision_real = limpiarNumero($fila[$columnas['comision_real']] ?? 0);
+            } elseif ($tipo == 'polizas' || $tipo == 'integralidad' || $tipo == 'retomas') {
+                $comision_real = limpiarNumero($fila[$columnas['comision_real']] ?? 0);
             } else {
                 $valor_venta = limpiarNumero($fila[$columnas['valor_venta']] ?? 0);
                 $comision_real = limpiarNumero($fila[$columnas['comision_real']] ?? 0);
@@ -326,21 +438,49 @@ try {
             }
             
             // ============================================
-            // INSERTAR SEGÚN EL TIPO
+            // INSERTAR / ACTUALIZAR SEGÚN EL TIPO
             // ============================================
             if ($tipo == 'matriculas') {
-                $stmt->execute([
-                    $fecha_comision,
-                    trim($fila[$columnas['cod_vendedor']]),
-                    trim($fila[$columnas['cliente']] ?? ''),
-                    trim($fila[$columnas['matriculados']] ?? ''),
-                    trim($fila[$columnas['modelo']] ?? ''),
-                    trim($fila[$columnas['vin']] ?? ''),
-                    $valor_venta,
-                    $comision_real,
-                    $bono,
-                    $nombre_archivo
-                ]);
+                $vin = trim($fila[$columnas['vin']] ?? '');
+                $vin = empty($vin) ? null : $vin;
+                
+                $existe = false;
+                if ($vin !== null) {
+                    $stmt_check->execute([$vin]);
+                    $existe = $stmt_check->fetchColumn();
+                }
+                
+                if ($existe) {
+                    // ✅ VIN existe → ACTUALIZAR TODO (excepto archivo_origen)
+                    $stmt_update->execute([
+                        $fecha_comision,
+                        trim($fila[$columnas['cod_vendedor']]),
+                        trim($fila[$columnas['cliente']] ?? ''),
+                        trim($fila[$columnas['matriculados']] ?? ''),
+                        trim($fila[$columnas['modelo']] ?? ''),
+                        $valor_venta,
+                        $comision_real,
+                        trim($fila[$columnas['observacion']] ?? ''),
+                        $vin
+                    ]);
+                    $actualizados++;
+                } else {
+                    // ✅ VIN no existe → INSERTAR
+                    $stmt_insert->execute([
+                        $fecha_comision,
+                        trim($fila[$columnas['cod_vendedor']]),
+                        trim($fila[$columnas['cliente']] ?? ''),
+                        trim($fila[$columnas['matriculados']] ?? ''),
+                        trim($fila[$columnas['modelo']] ?? ''),
+                        $vin,
+                        $valor_venta,
+                        $comision_real,
+                        trim($fila[$columnas['observacion']] ?? ''),
+                        $nombre_archivo
+                    ]);
+                    $insertados++;
+                }
+                
             } elseif ($tipo == 'usados') {
                 $stmt->execute([
                     $fecha_comision,
@@ -354,6 +494,8 @@ try {
                     $bono,
                     $nombre_archivo
                 ]);
+                $insertados++;
+                
             } elseif ($tipo == 'accesorios') {
                 $stmt->execute([
                     $fecha_comision,
@@ -364,6 +506,8 @@ try {
                     $comision_real,
                     $nombre_archivo
                 ]);
+                $insertados++;
+                
             } elseif ($tipo == 'incentivos') {
                 $stmt->execute([
                     $fecha_comision,
@@ -372,6 +516,8 @@ try {
                     $comision_real,
                     $nombre_archivo
                 ]);
+                $insertados++;
+                
             } elseif ($tipo == 'financieras') {
                 $stmt->execute([
                     $fecha_comision,
@@ -381,19 +527,58 @@ try {
                     $comision_real,
                     $nombre_archivo
                 ]);
+                $insertados++;
+                
+            } elseif ($tipo == 'polizas') {
+                $stmt->execute([
+                    $fecha_comision,
+                    trim($fila[$columnas['cod_vendedor']]),
+                    trim($fila[$columnas['observacion']] ?? ''),
+                    $comision_real,
+                    $nombre_archivo
+                ]);
+                $insertados++;
+                
+            } elseif ($tipo == 'integralidad') {
+                $stmt->execute([
+                    $fecha_comision,
+                    trim($fila[$columnas['cod_vendedor']]),
+                    trim($fila[$columnas['observacion']] ?? ''),
+                    $comision_real,
+                    $nombre_archivo
+                ]);
+                $insertados++;
+                
+            } elseif ($tipo == 'retomas') {
+                $stmt->execute([
+                    $fecha_comision,
+                    trim($fila[$columnas['cod_vendedor']]),
+                    trim($fila[$columnas['observacion']] ?? ''),
+                    $comision_real,
+                    $nombre_archivo
+                ]);
+                $insertados++;
             }
-            
-            $insertados++;
             
         } catch (Exception $e) {
             $errores++;
-            error_log("Error al insertar fila: " . $e->getMessage());
+            error_log("Error al procesar fila: " . $e->getMessage());
         }
     }
     
-    $_SESSION['mensaje'] = "✅ Archivo subido correctamente. Se insertaron <strong>$insertados</strong> registros.";
+    // ============================================
+    // MENSAJE DE ÉXITO
+    // ============================================
+    if ($tipo == 'matriculas') {
+        $_SESSION['mensaje'] = "✅ Archivo procesado correctamente.<br>";
+        $_SESSION['mensaje'] .= "📥 Se insertaron <strong>$insertados</strong> registros nuevos.<br>";
+        $_SESSION['mensaje'] .= "🔄 Se actualizaron <strong>$actualizados</strong> registros existentes.";
+    } else {
+        $_SESSION['mensaje'] = "✅ Archivo subido correctamente. Se insertaron <strong>$insertados</strong> registros.";
+    }
+    
     if ($errores > 0) {
-        $_SESSION['mensaje'] .= " ($errores filas con error)";
+        $_SESSION['mensaje'] .= "<br>⚠️ $errores filas con error.";
     }
     
 } catch (Exception $e) {
@@ -424,7 +609,6 @@ function limpiarNumero($valor) {
     $tiene_coma = strpos($valor, ',') !== false;
     
     if ($tiene_punto && $tiene_coma) {
-        // Formato colombiano: 1.500.000,50
         $valor = str_replace('.', '', $valor);
         $valor = str_replace(',', '.', $valor);
     } 

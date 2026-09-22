@@ -43,11 +43,11 @@ if (empty($cod_asesor)) {
     $anio_actual = $anio_vencido;
     
     // Total comisiones del mes vencido (matriculas)
+    // ⚠️ com_matriculas ya NO tiene 'bono' (ahora es 'observacion')
     $stmt = $pdo->prepare("
         SELECT 
             COUNT(*) as total_ventas,
-            COALESCE(SUM(comision_real), 0) as total_comisiones,
-            COALESCE(SUM(bono), 0) as total_bonos
+            COALESCE(SUM(comision_real), 0) as total_comisiones
         FROM com_matriculas 
         WHERE cod_vendedor = ? 
         AND MONTH(fecha_comision) = ? 
@@ -58,7 +58,6 @@ if (empty($cod_asesor)) {
     
     $total_ventas = $stats_mes['total_ventas'] ?? 0;
     $total_comisiones = $stats_mes['total_comisiones'] ?? 0;
-    $total_bonos = $stats_mes['total_bonos'] ?? 0;
     
     // Ranking: cuántos asesores vendieron más que él este mes
     $stmt = $pdo->prepare("
@@ -317,73 +316,6 @@ $nombre_mes = $meses_espanol[$mes_actual ?? date('n')];
             color: #12232b;
         }
 
-        /* ===== RESUMEN DEL MES ===== */
-        .resumen-card {
-            background: white;
-            border-radius: 16px;
-            padding: 25px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-        }
-        .resumen-card h3 {
-            font-size: 16px;
-            color: #12232b;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            border-bottom: 2px solid #f0f2f5;
-            padding-bottom: 15px;
-        }
-        .resumen-card h3 i {
-            color: #173742;
-        }
-        .resumen-card h3 .badge-vencido {
-            background: #fef9e7;
-            color: #7f6000;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            border: 1px solid #f39c12;
-            margin-left: 8px;
-        }
-        .resumen-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-        }
-        .resumen-item {
-            text-align: center;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-        }
-        .resumen-item:hover {
-            background: #e8f0fe;
-            transform: translateY(-3px);
-        }
-        .resumen-item i {
-            font-size: 32px;
-            margin-bottom: 10px;
-            display: block;
-        }
-        .resumen-item .icon-money { color: #27ae60; }
-        .resumen-item .icon-bono { color: #f39c12; }
-        .resumen-item .icon-ventas { color: #3498db; }
-        .resumen-item .icon-ranking { color: #e74c3c; }
-        .resumen-item .numero {
-            font-size: 22px;
-            font-weight: 700;
-            color: #12232b;
-            margin-bottom: 4px;
-        }
-        .resumen-item .label {
-            font-size: 12px;
-            color: #7f8c8d;
-            font-weight: 500;
-        }
-
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .header .container { flex-direction: column; gap: 15px; text-align: center; }
@@ -468,7 +400,7 @@ $nombre_mes = $meses_espanol[$mes_actual ?? date('n')];
                     </span>
                 </a>
 
-                <!-- ✅ NUEVO: Reclamos -->
+                <!-- Reclamos -->
                 <a href="reclamos/index.php" class="modulo-card">
                     <div class="modulo-icon reclamos">
                         <i class="fas fa-comments"></i>

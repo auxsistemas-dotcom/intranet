@@ -110,17 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($archivo['error'] !== UPLOAD_ERR_OK) {
             $error = "❌ Error al subir la imagen (código: " . $archivo['error'] . ")";
         } else {
-            // Validar tamaño máximo (5 MB)
             $max_size = 5 * 1024 * 1024;
             if ($archivo['size'] > $max_size) {
                 $error = "❌ La imagen no debe pesar más de 5 MB";
             } else {
-                // Validar extensión
                 $ext = strtolower(pathinfo($archivo['name'], PATHINFO_EXTENSION));
                 if (!in_array($ext, ['jpg', 'jpeg', 'png'])) {
                     $error = "❌ Solo se permiten imágenes JPG, JPEG o PNG";
                 } else {
-                    // Validar MIME real
                     $finfo = finfo_open(FILEINFO_MIME_TYPE);
                     $mime = finfo_file($finfo, $archivo['tmp_name']);
                     finfo_close($finfo);
@@ -128,13 +125,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     if (!in_array($mime, ['image/jpeg', 'image/jpg', 'image/png'])) {
                         $error = "❌ El archivo no es una imagen válida";
                     } else {
-                        // Crear carpeta del reclamo si no existe
                         $carpeta_reclamo = __DIR__ . '/../../../uploads/reclamos/' . $id . '/';
                         if (!is_dir($carpeta_reclamo)) {
                             mkdir($carpeta_reclamo, 0755, true);
                         }
                         
-                        // Generar nombre único
                         $imagen_nombre = time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
                         $ruta_destino = $carpeta_reclamo . $imagen_nombre;
                         
@@ -148,7 +143,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
     
-    // Validaciones del mensaje
     if (empty($error)) {
         if (empty($mensaje) && empty($imagen_nombre)) {
             $error = "❌ Debes escribir un mensaje o adjuntar una imagen";
@@ -165,12 +159,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ");
                 $stmt->execute([$id, $usuario_id, $mensaje, $imagen_nombre]);
                 
-                // Actualizar estado a "en_revision" si estaba pendiente
                 if ($reclamo['estado'] == 'pendiente') {
                     $stmt = $pdo->prepare("UPDATE reclamos SET estado = 'en_revision', actualizado_el = NOW() WHERE id = ?");
                     $stmt->execute([$id]);
                     
-                    // ✅ Notificar al asesor del cambio de estado automático
                     try {
                         notificarCambioEstado($id, 'pendiente', 'en_revision');
                     } catch (Exception $e) {
@@ -198,7 +190,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $error = "❌ Estado no válido";
     } else {
         try {
-            // Si pasa a "resuelto", guardamos la fecha de cierre
             if ($nuevo_estado == 'resuelto') {
                 $stmt = $pdo->prepare("UPDATE reclamos SET estado = ?, cerrado_el = NOW(), actualizado_el = NOW() WHERE id = ?");
             } else {
@@ -206,7 +197,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
             $stmt->execute([$nuevo_estado, $id]);
             
-            // ✅ Notificar por correo al asesor sobre el cambio de estado
             try {
                 notificarCambioEstado($id, $reclamo['estado'], $nuevo_estado);
             } catch (Exception $e) {
@@ -238,7 +228,6 @@ $mensajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $estado_info = $estados[$reclamo['estado']] ?? $estados['pendiente'];
 
-// Recuperar mensajes de sesión
 $mensaje_exito = '';
 if (isset($_SESSION['mensaje'])) {
     $mensaje_exito = $_SESSION['mensaje'];
@@ -864,6 +853,141 @@ if (isset($_SESSION['mensaje'])) {
             transform: scale(1.2) rotate(90deg);
         }
 
+        /* ===== MODAL PERSONALIZADO ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(18, 35, 43, 0.75);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(3px);
+        }
+        .modal-overlay.activo {
+            display: flex;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            overflow: hidden;
+            animation: modalSlideIn 0.3s ease;
+        }
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #12232b, #173742);
+            padding: 20px 25px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: white;
+        }
+        .modal-header .icono {
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+        .modal-header h3 {
+            font-size: 17px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .modal-body {
+            padding: 25px;
+            color: #2c3e50;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .modal-body p {
+            margin-bottom: 12px;
+        }
+        .modal-body strong {
+            color: #12232b;
+        }
+        .modal-body .reclamo-info {
+            background: #f0f2f5;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-top: 15px;
+            border-left: 4px solid #27ae60;
+        }
+        .modal-body .reclamo-info .label {
+            font-size: 11px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .modal-body .reclamo-info .valor {
+            font-size: 14px;
+            font-weight: 500;
+            color: #12232b;
+        }
+        .modal-footer {
+            padding: 18px 25px;
+            background: #f8f9fa;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            border-top: 1px solid #e9ecef;
+        }
+        .modal-footer button {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        .modal-footer .btn-cancelar-modal {
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        .modal-footer .btn-cancelar-modal:hover {
+            background: #d5dbdb;
+            transform: translateY(-2px);
+        }
+        .modal-footer .btn-confirmar-modal {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+        }
+        .modal-footer .btn-confirmar-modal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(39, 174, 96, 0.4);
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .header .container { flex-direction: column; gap: 15px; text-align: center; }
@@ -876,6 +1000,8 @@ if (isset($_SESSION['mensaje'])) {
             .estado-actions { flex-direction: column; }
             .estado-actions .btn-estado { width: 100%; justify-content: center; }
             .nombre-imagen { max-width: 120px; }
+            .modal-footer { flex-direction: column; }
+            .modal-footer button { width: 100%; justify-content: center; }
         }
     </style>
 </head>
@@ -981,12 +1107,13 @@ if (isset($_SESSION['mensaje'])) {
                         </form>
                     <?php endif; ?>
 
-                    <form method="POST" action="" style="display: inline;">
+                    <button type="button" class="btn-estado resuelto" id="btnMarcarResuelto">
+                        <i class="fas fa-check-circle"></i> Marcar como Resuelto
+                    </button>
+                    
+                    <form method="POST" action="" id="formMarcarResuelto" style="display: none;">
                         <input type="hidden" name="action" value="cambiar_estado">
                         <input type="hidden" name="nuevo_estado" value="resuelto">
-                        <button type="submit" class="btn-estado resuelto" onclick="return confirm('¿Marcar este reclamo como resuelto? El asesor no podrá enviar más mensajes.')">
-                            <i class="fas fa-check-circle"></i> Marcar como Resuelto
-                        </button>
                     </form>
                 <?php endif; ?>
             </div>
@@ -1014,7 +1141,6 @@ if (isset($_SESSION['mensaje'])) {
                         $es_propio = ($msg['usuario_id'] == $usuario_id);
                         $es_admin = ($msg['rol_id'] == 1 || $msg['rol_id'] == 2);
                         
-                        // Iniciales del nombre
                         $iniciales = '';
                         $partes = explode(' ', trim($msg['nombre_completo'] ?? 'Usuario'));
                         if (count($partes) >= 2) {
@@ -1078,7 +1204,7 @@ if (isset($_SESSION['mensaje'])) {
                             <textarea 
                                 name="mensaje" 
                                 id="inputMensaje"
-                                placeholder="Escribe tu respuesta aquí..."
+                                placeholder="Escribe tu respuesta aquí... (puedes pegar imágenes con Ctrl+V)"
                                 rows="1"
                             ></textarea>
                             <button type="submit" class="btn-enviar" title="Enviar mensaje">
@@ -1098,6 +1224,38 @@ if (isset($_SESSION['mensaje'])) {
                     </form>
                 </div>
             <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ===== MODAL PERSONALIZADO ===== -->
+    <div class="modal-overlay" id="modalConfirmar">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="icono">
+                    <i class="fas fa-question-circle"></i>
+                </div>
+                <h3>Confirmar acción</h3>
+            </div>
+            <div class="modal-body">
+                <p>¿Marcar este reclamo como <strong>Resuelto</strong>?</p>
+                <p style="color: #7f8c8d; font-size: 13px;">El asesor no podrá enviar más mensajes.</p>
+                
+                <div class="reclamo-info">
+                    <span class="label">Reclamo</span>
+                    <span class="valor">
+                        #<?php echo str_pad($reclamo['id'], 4, '0', STR_PAD_LEFT); ?> 
+                        - <?php echo htmlspecialchars($reclamo['asunto']); ?>
+                    </span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancelar-modal" id="btnCancelarModal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn-confirmar-modal" id="btnConfirmarModal">
+                    <i class="fas fa-check-circle"></i> Sí, marcar resuelto
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1199,6 +1357,54 @@ if (isset($_SESSION['mensaje'])) {
         }
 
         // ============================================
+        // PEGAR IMAGEN DESDE EL PORTAPAPELES (Ctrl+V)
+        // ============================================
+        if (textarea && inputImagen) {
+            textarea.addEventListener('paste', function(e) {
+                // Obtener los items del portapapeles
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                
+                let imagenEncontrada = null;
+                
+                // Buscar si hay una imagen en el portapapeles
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        imagenEncontrada = items[i].getAsFile();
+                        break;
+                    }
+                }
+                
+                // Si hay imagen, procesarla
+                if (imagenEncontrada) {
+                    e.preventDefault(); // Evitar pegar la imagen como "texto"
+                    
+                    // Validar tamaño (5 MB)
+                    if (imagenEncontrada.size > 5 * 1024 * 1024) {
+                        alert('❌ La imagen no debe pesar más de 5 MB');
+                        return;
+                    }
+                    
+                    // Validar tipo
+                    const tiposPermitidos = ['image/jpeg', 'image/jpg', 'image/png'];
+                    if (!tiposPermitidos.includes(imagenEncontrada.type)) {
+                        alert('❌ Solo se permiten imágenes JPG, JPEG o PNG');
+                        return;
+                    }
+                    
+                    // Crear un objeto DataTransfer para asignar el archivo al input
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(imagenEncontrada);
+                    inputImagen.files = dataTransfer.files;
+                    
+                    // Disparar el evento change para que se muestre la preview
+                    const event = new Event('change', { bubbles: true });
+                    inputImagen.dispatchEvent(event);
+                }
+                // Si no hay imagen, dejar que pegue el texto normalmente
+            });
+        }
+
+        // ============================================
         // LIGHTBOX
         // ============================================
         function abrirLightbox(src) {
@@ -1227,6 +1433,51 @@ if (isset($_SESSION['mensaje'])) {
             }
             lightbox.querySelector('img').src = src;
             lightbox.classList.add('activo');
+        }
+
+        // ============================================
+        // MODAL PERSONALIZADO
+        // ============================================
+        const btnMarcarResuelto = document.getElementById('btnMarcarResuelto');
+        const modalConfirmar = document.getElementById('modalConfirmar');
+        const btnCancelarModal = document.getElementById('btnCancelarModal');
+        const btnConfirmarModal = document.getElementById('btnConfirmarModal');
+
+        if (btnMarcarResuelto) {
+            // Abrir modal
+            btnMarcarResuelto.addEventListener('click', function() {
+                modalConfirmar.classList.add('activo');
+            });
+        }
+
+        if (btnCancelarModal) {
+            // Cerrar modal con Cancelar
+            btnCancelarModal.addEventListener('click', function() {
+                modalConfirmar.classList.remove('activo');
+            });
+        }
+
+        if (btnConfirmarModal) {
+            // Confirmar y enviar el formulario
+            btnConfirmarModal.addEventListener('click', function() {
+                document.getElementById('formMarcarResuelto').submit();
+            });
+        }
+
+        if (modalConfirmar) {
+            // Cerrar modal al hacer clic fuera del contenido
+            modalConfirmar.addEventListener('click', function(e) {
+                if (e.target === modalConfirmar) {
+                    modalConfirmar.classList.remove('activo');
+                }
+            });
+
+            // Cerrar modal con la tecla ESC
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modalConfirmar.classList.contains('activo')) {
+                    modalConfirmar.classList.remove('activo');
+                }
+            });
         }
     </script>
 </body>

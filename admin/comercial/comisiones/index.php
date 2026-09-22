@@ -59,7 +59,10 @@ $tipos_comisiones = [
     'usados' => 'Usados',
     'financieras' => 'Financieras',
     'accesorios' => 'Accesorios',
-    'incentivos' => 'Incentivos'
+    'incentivos' => 'Incentivos',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas'
 ];
 
 // ============================================
@@ -83,40 +86,12 @@ $meses = [
 // ============================================
 // AÑOS DISPONIBLES
 // ============================================
-$año_actual = date('Y');  // Año del servidor
-$año_minimo = 2026;        // Año mínimo fijo
+$año_actual = date('Y');
+$año_minimo = 2026;
 
 $años = [];
 for ($i = $año_minimo; $i <= $año_actual; $i++) {
     $años[] = $i;
-}
-
-// ============================================
-// ESTADÍSTICAS (sumando todas las tablas disponibles)
-// ============================================
-
-// Tablas disponibles para estadísticas
-$tablas_estadisticas = ['com_matriculas', 'com_usados'];
-
-// Total de meses cargados
-$total_meses_cargados = 0;
-foreach ($tablas_estadisticas as $tabla) {
-    $stmt = $pdo->query("SELECT COUNT(DISTINCT DATE_FORMAT(fecha_comision, '%Y-%m')) as total FROM $tabla");
-    $total_meses_cargados += $stmt->fetchColumn() ?? 0;
-}
-
-// Total de registros
-$total_registros = 0;
-foreach ($tablas_estadisticas as $tabla) {
-    $stmt = $pdo->query("SELECT COUNT(*) FROM $tabla");
-    $total_registros += $stmt->fetchColumn() ?? 0;
-}
-
-// Total comisiones
-$total_comisiones = 0;
-foreach ($tablas_estadisticas as $tabla) {
-    $stmt = $pdo->query("SELECT COALESCE(SUM(comision_real), 0) FROM $tabla");
-    $total_comisiones += $stmt->fetchColumn() ?? 0;
 }
 ?>
 <!DOCTYPE html>
@@ -164,39 +139,6 @@ foreach ($tablas_estadisticas as $tabla) {
             background: #ffc107;
             color: #12232b;
             transform: translateY(-2px);
-        }
-
-        /* ===== DASHBOARD CARDS ===== */
-        .dashboard-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .card-dashboard {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            transition: transform 0.3s;
-        }
-        .card-dashboard:hover { transform: translateY(-5px); }
-        .card-dashboard i {
-            font-size: 42px;
-            color: #173742;
-            margin-bottom: 12px;
-        }
-        .card-dashboard h3 {
-            font-size: 13px;
-            color: #7f8c8d;
-            margin-bottom: 10px;
-            font-weight: 500;
-        }
-        .card-dashboard .numero {
-            font-size: 28px;
-            font-weight: 700;
-            color: #12232b;
         }
 
         /* ===== CARD PRINCIPAL ===== */

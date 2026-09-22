@@ -63,7 +63,10 @@ $tipos_comisiones = [
     'accesorios' => 'Accesorios',
     'usados' => 'Usados',
     'financieras' => 'Financieras',
-    'incentivos' => 'Incentivos'
+    'incentivos' => 'Incentivos',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas'
 ];
 
 // ============================================
@@ -75,17 +78,23 @@ $tablas_disponibles = [
     'accesorios' => 'com_accesorios',
     'incentivos' => 'com_incentivos',
     'financieras' => 'com_financieras',
+    'polizas' => 'com_polizas',
+    'integralidad' => 'com_integralidad',
+    'retomas' => 'com_retomas',
 ];
 
 // ============================================
 // COLUMNAS DISPONIBLES POR TABLA
 // ============================================
 $columnas_por_tabla = [
-    'com_matriculas' => ['comision_real', 'bono', 'valor_venta', 'modelo'],
+    'com_matriculas' => ['comision_real', 'observacion', 'valor_venta', 'modelo'],
     'com_usados' => ['comision_real', 'bono', 'valor_venta', 'modelo'],
     'com_accesorios' => ['comision_real', 'base', 'modelo'],
     'com_incentivos' => ['comision_real'],
-    'com_financieras' => ['comision_real', 'vehiculos_vendidos']
+    'com_financieras' => ['comision_real', 'vehiculos_vendidos'],
+    'com_polizas' => ['comision_real'],
+    'com_integralidad' => ['comision_real'],
+    'com_retomas' => ['comision_real']
 ];
 
 // ============================================

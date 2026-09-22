@@ -32,14 +32,17 @@ $meses_espanol = [
 ];
 
 // ============================================
-// TIPOS DE COMISIONES
+// TIPOS DE COMISIONES (8 tipos)
 // ============================================
 $tipos_comisiones = [
     'matriculas' => 'Matrículas',
     'usados' => 'Usados',
     'accesorios' => 'Accesorios',
     'incentivos' => 'Incentivos',
-    'financieras' => 'Financieras'
+    'financieras' => 'Financieras',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas'
 ];
 
 // ============================================

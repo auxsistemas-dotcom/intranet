@@ -73,7 +73,10 @@ $tipos_comisiones = [
     'accesorios' => 'Accesorios',
     'usados' => 'Usados',
     'financieras' => 'Financieras',
-    'incentivos' => 'Incentivos'
+    'incentivos' => 'Incentivos',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas'
 ];
 
 $tablas_disponibles = [
@@ -82,17 +85,23 @@ $tablas_disponibles = [
     'accesorios' => 'com_accesorios',
     'incentivos' => 'com_incentivos',
     'financieras' => 'com_financieras',
+    'polizas' => 'com_polizas',
+    'integralidad' => 'com_integralidad',
+    'retomas' => 'com_retomas',
 ];
 
 // ============================================
 // COLUMNAS DISPONIBLES POR TABLA
 // ============================================
 $columnas_por_tabla = [
-    'com_matriculas' => ['comision_real', 'bono', 'valor_venta', 'modelo'],
+    'com_matriculas' => ['comision_real', 'observacion', 'valor_venta', 'modelo'],
     'com_usados' => ['comision_real', 'bono', 'valor_venta', 'modelo'],
     'com_accesorios' => ['comision_real', 'base', 'modelo'],
     'com_incentivos' => ['comision_real'],
-    'com_financieras' => ['comision_real', 'vehiculos_vendidos']
+    'com_financieras' => ['comision_real', 'vehiculos_vendidos'],
+    'com_polizas' => ['comision_real'],
+    'com_integralidad' => ['comision_real'],
+    'com_retomas' => ['comision_real']
 ];
 
 // ============================================
@@ -123,6 +132,11 @@ if ($busqueda_realizada && $filtro_sede !== 'todas' && !in_array($filtro_sede, $
 $ver_todo_anio = ($filtro_mes === 0);
 
 // ============================================
+// DETERMINAR SI ES "TODOS" O UN TIPO ESPECÍFICO
+// ============================================
+$es_filtro_todos = ($filtro_tipo === 'todos');
+
+// ============================================
 // INICIALIZAR VARIABLES
 // ============================================
 $total_ventas = 0;
@@ -133,6 +147,7 @@ $total_asesores = 0;
 $promedio_asesor = 0;
 $mejor_asesor = null;
 $ranking_completo = [];
+$ranking_totales = [];
 $top_modelos = [];
 $max_ventas_modelo = 0;
 $datos_comisiones_mes = array_fill(1, 12, 0);
@@ -178,7 +193,7 @@ if ($busqueda_realizada) {
                     $sum_bono as total_bonos,
                     COUNT(DISTINCT cm.cod_vendedor) as total_asesores
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE YEAR(cm.fecha_comision) = ?
                 $where_sede
             ");
@@ -191,7 +206,7 @@ if ($busqueda_realizada) {
                     $sum_bono as total_bonos,
                     COUNT(DISTINCT cm.cod_vendedor) as total_asesores
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE MONTH(cm.fecha_comision) = ? 
                 AND YEAR(cm.fecha_comision) = ?
                 $where_sede
@@ -210,49 +225,104 @@ if ($busqueda_realizada) {
     $promedio_asesor = $total_asesores > 0 ? ($total_comisiones / $total_asesores) : 0;
     
     // ============================================
-    // 2. RANKING
+    // 2. RANKING (según el filtro)
     // ============================================
-    $ranking_temp = [];
     
-    foreach ($tablas_a_usar as $tabla) {
+    // 2.1 Obtener TODOS los asesores activos
+    $sql_asesores = "
+        SELECT 
+            u.id,
+            u.cod_asesor,
+            u.nombre_completo,
+            u.sede
+        FROM usuarios u
+        WHERE u.rol_id = 3
+        AND u.activo = 1
+        AND u.cod_asesor IS NOT NULL
+        AND u.cod_asesor != ''
+    ";
+    $params_asesores = [];
+    if ($filtro_sede !== 'todas') {
+        $sql_asesores .= " AND u.sede = ?";
+        $params_asesores[] = $filtro_sede;
+    }
+    $sql_asesores .= " ORDER BY u.nombre_completo ASC";
+    
+    $stmt = $pdo->prepare($sql_asesores);
+    $stmt->execute($params_asesores);
+    $asesores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // 2.2 Inicializar el ranking con TODOS los asesores en 0
+    $ranking_temp = [];
+    foreach ($asesores as $a) {
+        $cod = $a['cod_asesor'];
+        $ranking_temp[$cod] = [
+            'cod_vendedor' => $cod,
+            'nombre_asesor' => $a['nombre_completo'],
+            'sede_asesor' => $a['sede'],
+            'matriculas' => 0,
+            'usados' => 0,
+            'accesorios' => 0,
+            'incentivos' => 0,
+            'financieras' => 0,
+            'polizas' => 0,
+            'integralidad' => 0,
+            'retomas' => 0,
+            'bonos' => 0,
+            'total_comisiones' => 0,
+            'total_general' => 0
+        ];
+    }
+    
+    // 2.3 Sumar comisiones según el filtro
+    if ($es_filtro_todos) {
+        // Si es "Todos" → sumar las 8 tablas
+        $mapa_tipos = [
+            'com_matriculas' => 'matriculas',
+            'com_usados' => 'usados',
+            'com_accesorios' => 'accesorios',
+            'com_incentivos' => 'incentivos',
+            'com_financieras' => 'financieras',
+            'com_polizas' => 'polizas',
+            'com_integralidad' => 'integralidad',
+            'com_retomas' => 'retomas'
+        ];
+    } else {
+        // Si es un tipo específico → solo esa tabla
+        $tabla_especifica = $tablas_disponibles[$filtro_tipo];
+        $mapa_tipos = [$tabla_especifica => $filtro_tipo];
+    }
+    
+    foreach ($mapa_tipos as $tabla => $campo_tipo) {
         
         $tiene_bono = in_array('bono', $columnas_por_tabla[$tabla] ?? []);
         $sum_bono = $tiene_bono ? "COALESCE(SUM(cm.bono), 0)" : "0";
-        $sum_general = $tiene_bono ? "COALESCE(SUM(cm.comision_real + cm.bono), 0)" : "COALESCE(SUM(cm.comision_real), 0)";
         
         if ($ver_todo_anio) {
             $stmt = $pdo->prepare("
                 SELECT 
                     cm.cod_vendedor,
-                    u.nombre_completo as nombre_asesor,
-                    u.sede as sede_asesor,
-                    COUNT(*) as total_ventas,
                     COALESCE(SUM(cm.comision_real), 0) as total_comisiones,
-                    $sum_bono as total_bonos,
-                    $sum_general as total_general
+                    $sum_bono as total_bonos
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE YEAR(cm.fecha_comision) = ?
                 $where_sede
-                GROUP BY cm.cod_vendedor, u.nombre_completo, u.sede
+                GROUP BY cm.cod_vendedor
             ");
             $stmt->execute(array_merge([$filtro_anio], $params_sede));
         } else {
             $stmt = $pdo->prepare("
                 SELECT 
                     cm.cod_vendedor,
-                    u.nombre_completo as nombre_asesor,
-                    u.sede as sede_asesor,
-                    COUNT(*) as total_ventas,
                     COALESCE(SUM(cm.comision_real), 0) as total_comisiones,
-                    $sum_bono as total_bonos,
-                    $sum_general as total_general
+                    $sum_bono as total_bonos
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE MONTH(cm.fecha_comision) = ? 
                 AND YEAR(cm.fecha_comision) = ?
                 $where_sede
-                GROUP BY cm.cod_vendedor, u.nombre_completo, u.sede
+                GROUP BY cm.cod_vendedor
             ");
             $stmt->execute(array_merge([$filtro_mes, $filtro_anio], $params_sede));
         }
@@ -261,32 +331,83 @@ if ($busqueda_realizada) {
         
         foreach ($resultados as $r) {
             $cod = $r['cod_vendedor'];
+            
             if (!isset($ranking_temp[$cod])) {
                 $ranking_temp[$cod] = [
                     'cod_vendedor' => $cod,
-                    'nombre_asesor' => $r['nombre_asesor'],
-                    'sede_asesor' => $r['sede_asesor'],
-                    'total_ventas' => 0,
+                    'nombre_asesor' => null,
+                    'sede_asesor' => null,
+                    'matriculas' => 0,
+                    'usados' => 0,
+                    'accesorios' => 0,
+                    'incentivos' => 0,
+                    'financieras' => 0,
+                    'polizas' => 0,
+                    'integralidad' => 0,
+                    'retomas' => 0,
+                    'bonos' => 0,
                     'total_comisiones' => 0,
-                    'total_bonos' => 0,
                     'total_general' => 0
                 ];
+                
+                $stmt_info = $pdo->prepare("SELECT nombre_completo, sede FROM usuarios WHERE cod_asesor = ? LIMIT 1");
+                $stmt_info->execute([$cod]);
+                $info = $stmt_info->fetch(PDO::FETCH_ASSOC);
+                if ($info) {
+                    $ranking_temp[$cod]['nombre_asesor'] = $info['nombre_completo'];
+                    $ranking_temp[$cod]['sede_asesor'] = $info['sede'];
+                }
             }
-            $ranking_temp[$cod]['total_ventas'] += $r['total_ventas'];
-            $ranking_temp[$cod]['total_comisiones'] += $r['total_comisiones'];
-            $ranking_temp[$cod]['total_bonos'] += $r['total_bonos'];
-            $ranking_temp[$cod]['total_general'] += $r['total_general'];
+            
+            $ranking_temp[$cod][$campo_tipo] += floatval($r['total_comisiones']);
+            $ranking_temp[$cod]['total_comisiones'] += floatval($r['total_comisiones']);
+            $ranking_temp[$cod]['bonos'] += floatval($r['total_bonos']);
         }
     }
     
+    // 2.4 Calcular total general por asesor
+    foreach ($ranking_temp as $cod => $r) {
+        $ranking_temp[$cod]['total_general'] = $r['total_comisiones'] + $r['bonos'];
+    }
+    
+    // 2.5 Ordenar por total_general descendente
     usort($ranking_temp, function($a, $b) {
-        return $b['total_comisiones'] <=> $a['total_comisiones'];
+        return $b['total_general'] <=> $a['total_general'];
     });
     
     $ranking_completo = array_values($ranking_temp);
     
     if (!empty($ranking_completo)) {
         $mejor_asesor = $ranking_completo[0];
+    }
+    
+    // 2.6 Calcular fila de totales
+    $ranking_totales = [
+        'matriculas' => 0,
+        'usados' => 0,
+        'accesorios' => 0,
+        'incentivos' => 0,
+        'financieras' => 0,
+        'polizas' => 0,
+        'integralidad' => 0,
+        'retomas' => 0,
+        'bonos' => 0,
+        'total_comisiones' => 0,
+        'total_general' => 0
+    ];
+    
+    foreach ($ranking_completo as $r) {
+        $ranking_totales['matriculas'] += $r['matriculas'];
+        $ranking_totales['usados'] += $r['usados'];
+        $ranking_totales['accesorios'] += $r['accesorios'];
+        $ranking_totales['incentivos'] += $r['incentivos'];
+        $ranking_totales['financieras'] += $r['financieras'];
+        $ranking_totales['polizas'] += $r['polizas'];
+        $ranking_totales['integralidad'] += $r['integralidad'];
+        $ranking_totales['retomas'] += $r['retomas'];
+        $ranking_totales['bonos'] += $r['bonos'];
+        $ranking_totales['total_comisiones'] += $r['total_comisiones'];
+        $ranking_totales['total_general'] += $r['total_general'];
     }
     
     // ============================================
@@ -299,7 +420,7 @@ if ($busqueda_realizada) {
                 COALESCE(SUM(cm.comision_real), 0) as total_comisiones,
                 COUNT(*) as total_ventas
             FROM $tabla cm
-            LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+            LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
             WHERE YEAR(cm.fecha_comision) = ?
             $where_sede
             GROUP BY MONTH(cm.fecha_comision)
@@ -315,7 +436,7 @@ if ($busqueda_realizada) {
     }
     
     // ============================================
-    // 4. TOP 5 MODELOS (union de tablas con modelo)
+    // 4. TOP 5 MODELOS
     // ============================================
     $tablas_con_modelo = [];
     foreach ($tablas_a_usar as $t) {
@@ -332,7 +453,7 @@ if ($busqueda_realizada) {
             $union_modelos[] = "
                 SELECT cm.modelo 
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE YEAR(cm.fecha_comision) = ?
                 $where_sede
                 AND cm.modelo IS NOT NULL
@@ -378,7 +499,7 @@ if ($busqueda_realizada) {
                     COUNT(*) as ventas,
                     COALESCE(SUM(cm.comision_real), 0) as comisiones
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE u.sede = ?
                 AND YEAR(cm.fecha_comision) = ?
             ");
@@ -388,11 +509,10 @@ if ($busqueda_realizada) {
             $ventas_sede += $resultado['ventas'] ?? 0;
             $comisiones_sede += $resultado['comisiones'] ?? 0;
             
-            // Para asesores únicos
             $stmt2 = $pdo->prepare("
                 SELECT DISTINCT cm.cod_vendedor
                 FROM $tabla cm
-                LEFT JOIN usuarios u ON cm.cod_vendedor = u.cod_asesor
+                LEFT JOIN usuarios u ON cm.cod_vendedor COLLATE utf8mb4_unicode_ci = u.cod_asesor COLLATE utf8mb4_unicode_ci
                 WHERE u.sede = ?
                 AND YEAR(cm.fecha_comision) = ?
             ");
@@ -418,6 +538,42 @@ if ($busqueda_realizada) {
             }
         }
     }
+}
+
+// ============================================
+// COLUMNAS VISIBLES SEGÚN EL FILTRO
+// ============================================
+$columnas_visibles = [];
+
+if ($filtro_tipo === 'todos') {
+    // Todos → todas las columnas
+    $columnas_visibles = [
+        'matriculas' => 'Matrículas',
+        'usados' => 'Usados',
+        'accesorios' => 'Accesorios',
+        'incentivos' => 'Incentivos',
+        'financieras' => 'Financieras',
+        'polizas' => 'Pólizas',
+        'integralidad' => 'Integralidad',
+        'retomas' => 'Retomas'
+    ];
+} elseif (!empty($filtro_tipo) && isset($tipos_comisiones[$filtro_tipo])) {
+    // Tipo específico válido → solo esa columna
+    $columnas_visibles = [$filtro_tipo => $tipos_comisiones[$filtro_tipo]];
+} else {
+    // Sin filtro o filtro inválido → array vacío
+    $columnas_visibles = [];
+}
+
+// ¿Mostrar bonos?
+$mostrar_bonos = false;
+if ($filtro_tipo === 'todos') {
+    // En "Todos" siempre mostrar bonos (porque incluye com_usados)
+    $mostrar_bonos = true;
+} elseif (isset($tablas_disponibles[$filtro_tipo])) {
+    // En un tipo específico, mostrar bonos solo si su tabla tiene la columna 'bono'
+    $tabla_actual = $tablas_disponibles[$filtro_tipo];
+    $mostrar_bonos = in_array('bono', $columnas_por_tabla[$tabla_actual] ?? []);
 }
 ?>
 <!DOCTYPE html>
@@ -556,16 +712,6 @@ if ($busqueda_realizada) {
             position: relative;
             overflow: hidden;
         }
-        .kpi-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0.05;
-            background: radial-gradient(circle at top right, currentColor, transparent 70%);
-        }
         .kpi-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
@@ -671,7 +817,7 @@ if ($busqueda_realizada) {
             background: #12232b;
             color: white;
             font-weight: 600;
-            font-size: 12px;
+            font-size: 11px;
             white-space: nowrap;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -709,6 +855,32 @@ if ($busqueda_realizada) {
         .money-total { color: #173742; font-weight: 700; font-size: 14px; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
+
+        /* Colores por tipo */
+        .tipo-matriculas { color: #27ae60; }
+        .tipo-usados { color: #3498db; }
+        .tipo-accesorios { color: #e67e22; }
+        .tipo-incentivos { color: #9b59b6; }
+        .tipo-financieras { color: #e91e63; }
+        .tipo-polizas { color: #00bcd4; }
+        .tipo-integralidad { color: #795548; }
+        .tipo-retomas { color: #607d8b; }
+
+        /* Fila de totales */
+        .fila-totales {
+            background: #12232b !important;
+            color: white;
+            font-weight: 700;
+        }
+        .fila-totales td {
+            color: white;
+            border-bottom: none;
+            padding: 15px 12px;
+        }
+        .fila-totales .money-total {
+            color: #ffc107;
+            font-size: 15px;
+        }
 
         /* ===== PAGINACIÓN ===== */
         .paginacion-container {
@@ -988,11 +1160,13 @@ if ($busqueda_realizada) {
                     <div class="label">Total Ventas</div>
                 </div>
                 
+                <?php if ($mostrar_bonos): ?>
                 <div class="kpi-card bonos">
                     <i class="fas fa-gift"></i>
                     <div class="numero">$<?php echo number_format($total_bonos, 0, ',', '.'); ?></div>
                     <div class="label">Total Bonos</div>
                 </div>
+                <?php endif; ?>
                 
                 <div class="kpi-card asesores">
                     <i class="fas fa-users"></i>
@@ -1009,7 +1183,6 @@ if ($busqueda_realizada) {
 
             <!-- ===== GRÁFICA + MEJOR ASESOR ===== -->
             <div class="fila-2col">
-                <!-- Gráfica de Evolución -->
                 <div class="card">
                     <h2>
                         <i class="fas fa-chart-bar"></i> 
@@ -1020,7 +1193,6 @@ if ($busqueda_realizada) {
                     </div>
                 </div>
 
-                <!-- Mejor Asesor -->
                 <div class="mejor-asesor-card">
                     <div class="trofeo"><i class="fas fa-trophy"></i></div>
                     <h3>Mejor Asesor del Período</h3>
@@ -1030,7 +1202,7 @@ if ($busqueda_realizada) {
                             <i class="fas fa-map-marker-alt"></i> 
                             <?php echo htmlspecialchars($mejor_asesor['sede_asesor'] ?? 'Sin sede'); ?>
                         </div>
-                        <div class="monto">$<?php echo number_format($mejor_asesor['total_comisiones'], 0, ',', '.'); ?></div>
+                        <div class="monto">$<?php echo number_format($mejor_asesor['total_general'], 0, ',', '.'); ?></div>
                         <div class="monto-label">en comisiones</div>
                     <?php else: ?>
                         <p>Sin datos</p>
@@ -1038,11 +1210,14 @@ if ($busqueda_realizada) {
                 </div>
             </div>
 
-            <!-- ===== RANKING COMPLETO ===== -->
+            <!-- ===== RANKING POR TIPO DE COMISIÓN ===== -->
             <div class="card">
                 <h2>
                     <i class="fas fa-trophy"></i> 
                     Ranking de Asesores
+                    <?php if ($filtro_tipo !== 'todos'): ?>
+                        - <?php echo $tipos_comisiones[$filtro_tipo]; ?>
+                    <?php endif; ?>
                     <span style="font-size: 13px; font-weight: 400; color: #7f8c8d;">
                         (<?php echo count($ranking_completo); ?> asesores)
                     </span>
@@ -1052,10 +1227,9 @@ if ($busqueda_realizada) {
                     <div class="empty-state">
                         <i class="fas fa-users"></i>
                         <h3>Sin datos</h3>
-                        <p>No hay asesores con comisiones en este período</p>
+                        <p>No hay asesores registrados</p>
                     </div>
                 <?php else: 
-                    // Paginación del ranking
                     $por_pagina = 10;
                     $pagina_actual = isset($_GET['pagina']) ? intval($_GET['pagina']) : 1;
                     if ($pagina_actual < 1) $pagina_actual = 1;
@@ -1070,12 +1244,14 @@ if ($busqueda_realizada) {
                             <thead>
                                 <tr>
                                     <th style="width: 60px; text-align: center;">Pos.</th>
-                                    <th>Código</th>
                                     <th>Asesor</th>
                                     <th>Sede</th>
-                                    <th class="text-center">Ventas</th>
-                                    <th class="text-right">Comisiones</th>
-                                    <th class="text-right">Bonos</th>
+                                    <?php foreach ($columnas_visibles as $key => $nombre): ?>
+                                        <th class="text-right"><?php echo $nombre; ?></th>
+                                    <?php endforeach; ?>
+                                    <?php if ($mostrar_bonos): ?>
+                                        <th class="text-right">Bonos</th>
+                                    <?php endif; ?>
                                     <th class="text-right">Total</th>
                                 </tr>
                             </thead>
@@ -1091,11 +1267,6 @@ if ($busqueda_realizada) {
                                         <td style="text-align: center;">
                                             <span class="posicion <?php echo $clase_pos; ?>"><?php echo $posicion; ?></span>
                                         </td>
-                                        <td>
-                                            <code style="background: #f0f0f0; padding: 3px 8px; border-radius: 4px; font-size: 12px;">
-                                                <?php echo htmlspecialchars($r['cod_vendedor']); ?>
-                                            </code>
-                                        </td>
                                         <td><strong><?php echo htmlspecialchars($r['nombre_asesor'] ?? 'Sin asignar'); ?></strong></td>
                                         <td>
                                             <?php if (!empty($r['sede_asesor'])): ?>
@@ -1107,17 +1278,31 @@ if ($busqueda_realizada) {
                                                 <span style="color: #7f8c8d;">—</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="text-center"><?php echo number_format($r['total_ventas'], 0, ',', '.'); ?></td>
-                                        <td class="text-right money">$<?php echo number_format($r['total_comisiones'], 0, ',', '.'); ?></td>
-                                        <td class="text-right money-bono">$<?php echo number_format($r['total_bonos'], 0, ',', '.'); ?></td>
+                                        <?php foreach ($columnas_visibles as $key => $nombre): ?>
+                                            <td class="text-right tipo-<?php echo $key; ?>">$<?php echo number_format($r[$key], 0, ',', '.'); ?></td>
+                                        <?php endforeach; ?>
+                                        <?php if ($mostrar_bonos): ?>
+                                            <td class="text-right money-bono">$<?php echo number_format($r['bonos'], 0, ',', '.'); ?></td>
+                                        <?php endif; ?>
                                         <td class="text-right money-total">$<?php echo number_format($r['total_general'], 0, ',', '.'); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
+                            <tfoot>
+                                <tr class="fila-totales">
+                                    <td colspan="3" class="text-right">TOTAL GENERAL:</td>
+                                    <?php foreach ($columnas_visibles as $key => $nombre): ?>
+                                        <td class="text-right">$<?php echo number_format($ranking_totales[$key], 0, ',', '.'); ?></td>
+                                    <?php endforeach; ?>
+                                    <?php if ($mostrar_bonos): ?>
+                                        <td class="text-right">$<?php echo number_format($ranking_totales['bonos'], 0, ',', '.'); ?></td>
+                                    <?php endif; ?>
+                                    <td class="text-right money-total">$<?php echo number_format($ranking_totales['total_general'], 0, ',', '.'); ?></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
 
-                    <!-- Paginación -->
                     <?php if ($total_paginas > 1): ?>
                     <div class="paginacion-container">
                         <div class="paginacion-info">
@@ -1174,7 +1359,6 @@ if ($busqueda_realizada) {
 
             <!-- ===== TOP 5 MODELOS + RESUMEN POR SEDE ===== -->
             <div class="fila-2col">
-                <!-- Top 5 Modelos -->
                 <div class="card">
                     <h2>
                         <i class="fas fa-car"></i> 
@@ -1205,7 +1389,6 @@ if ($busqueda_realizada) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Resumen por Sede -->
                 <div class="card">
                     <h2>
                         <i class="fas fa-map-marked-alt"></i> 
@@ -1254,7 +1437,6 @@ if ($busqueda_realizada) {
                 </div>
             </div>
 
-            <!-- ===== SCRIPT PARA LA GRÁFICA ===== -->
             <script>
                 const mesesLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
                 const datosComisiones = <?php echo json_encode(array_values($datos_comisiones_mes)); ?>;

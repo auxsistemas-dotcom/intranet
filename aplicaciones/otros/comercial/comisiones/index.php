@@ -45,6 +45,9 @@ $tipos_comisiones = [
     'accesorios' => 'Accesorios',
     'incentivos' => 'Incentivos',
     'financieras' => 'Financieras',
+    'polizas' => 'Pólizas',
+    'integralidad' => 'Integralidad',
+    'retomas' => 'Retomas',
 ];
 
 // ============================================
@@ -55,18 +58,24 @@ $tablas_por_tipo = [
     'usados' => 'com_usados',
     'accesorios' => 'com_accesorios',
     'incentivos' => 'com_incentivos',
-    'financieras' => 'com_financieras'
+    'financieras' => 'com_financieras',
+    'polizas' => 'com_polizas',
+    'integralidad' => 'com_integralidad',
+    'retomas' => 'com_retomas'
 ];
 
 // ============================================
 // COLUMNAS DISPONIBLES POR TIPO
 // ============================================
 $columnas_por_tipo = [
-    'matriculas' => ['matriculados', 'modelo', 'vin', 'valor_venta', 'comision_real', 'bono'],
+    'matriculas' => ['matriculados', 'modelo', 'valor_venta', 'comision_real', 'observacion'],
     'usados' => ['placa', 'modelo', 'vin', 'valor_venta', 'comision_real', 'bono'],
     'accesorios' => ['modelo', 'base', 'comision_real'],
     'incentivos' => ['observacion', 'comision_real'],
-    'financieras' => ['concepto', 'vehiculos_vendidos', 'comision_real']
+    'financieras' => ['concepto', 'vehiculos_vendidos', 'comision_real'],
+    'polizas' => ['observacion', 'comision_real'],
+    'integralidad' => ['observacion', 'comision_real'],
+    'retomas' => ['observacion', 'comision_real']
 ];
 
 // ============================================
@@ -124,6 +133,7 @@ $comisiones = [];
 $nombre_mes_filtro = '';
 $nombre_tipo_filtro = '';
 $tiene_bono = false;
+$tiene_valor_venta = false;
 
 // ============================================
 // SOLO SI SE HIZO BÚSQUEDA
@@ -391,6 +401,16 @@ if ($busqueda_realizada) {
             font-weight: 600;
         }
 
+        /* Texto pequeño para observaciones */
+        .text-observacion {
+            font-size: 11px;
+            color: #7f8c8d;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         /* ===== PAGINACIÓN ===== */
         .paginacion-container {
             display: flex;
@@ -619,7 +639,7 @@ if ($busqueda_realizada) {
                             <thead>
                                 <tr>
                                     <th>Fecha</th>
-                                    <?php if ($filtro_tipo == 'incentivos'): ?>
+                                    <?php if (in_array($filtro_tipo, ['incentivos', 'polizas', 'integralidad', 'retomas'])): ?>
                                         <th>Observación</th>
                                     <?php elseif ($filtro_tipo == 'financieras'): ?>
                                         <th>Concepto</th>
@@ -628,24 +648,24 @@ if ($busqueda_realizada) {
                                         <th>Cliente</th>
                                         <?php if ($filtro_tipo == 'matriculas'): ?>
                                             <th>Matriculados</th>
+                                            <th>Modelo</th>
+                                            <th class="text-right">Valor Venta</th>
                                         <?php elseif ($filtro_tipo == 'usados'): ?>
                                             <th>Placa</th>
-                                        <?php elseif ($filtro_tipo == 'accesorios'): ?>
-                                            <th>Modelo</th>
-                                        <?php endif; ?>
-                                        <?php if ($filtro_tipo != 'accesorios'): ?>
                                             <th>Modelo</th>
                                             <th>VIN</th>
-                                        <?php endif; ?>
-                                        <?php if ($filtro_tipo == 'accesorios'): ?>
-                                            <th class="text-right">Base</th>
-                                        <?php else: ?>
                                             <th class="text-right">Valor Venta</th>
+                                        <?php elseif ($filtro_tipo == 'accesorios'): ?>
+                                            <th>Modelo</th>
+                                            <th class="text-right">Base</th>
                                         <?php endif; ?>
                                     <?php endif; ?>
                                     <th class="text-right">Comisión</th>
                                     <?php if ($tiene_bono): ?>
                                         <th class="text-right">Bono</th>
+                                    <?php endif; ?>
+                                    <?php if ($filtro_tipo == 'matriculas'): ?>
+                                        <th>Observación</th>
                                     <?php endif; ?>
                                 </tr>
                             </thead>
@@ -654,7 +674,7 @@ if ($busqueda_realizada) {
                                     <tr>
                                         <td><?php echo date('d/m/Y', strtotime($com['fecha_comision'])); ?></td>
                                         
-                                        <?php if ($filtro_tipo == 'incentivos'): ?>
+                                        <?php if (in_array($filtro_tipo, ['incentivos', 'polizas', 'integralidad', 'retomas'])): ?>
                                             <td><?php echo htmlspecialchars($com['observacion'] ?? ''); ?></td>
                                         <?php elseif ($filtro_tipo == 'financieras'): ?>
                                             <td><?php echo htmlspecialchars($com['concepto'] ?? ''); ?></td>
@@ -668,16 +688,15 @@ if ($busqueda_realizada) {
                                             
                                             <?php if ($filtro_tipo == 'matriculas'): ?>
                                                 <td><?php echo htmlspecialchars($com['matriculados'] ?? ''); ?></td>
-                                                <td><?php echo htmlspecialchars($com['modelo']); ?></td>
-                                                <td style="font-size: 11px; color: #7f8c8d;"><?php echo htmlspecialchars($com['vin']); ?></td>
+                                                <td><?php echo htmlspecialchars($com['modelo'] ?? ''); ?></td>
                                                 <td class="text-right money-venta">$<?php echo number_format($com['valor_venta'], 0, ',', '.'); ?></td>
                                             <?php elseif ($filtro_tipo == 'usados'): ?>
                                                 <td><?php echo htmlspecialchars($com['placa'] ?? ''); ?></td>
-                                                <td><?php echo htmlspecialchars($com['modelo']); ?></td>
-                                                <td style="font-size: 11px; color: #7f8c8d;"><?php echo htmlspecialchars($com['vin']); ?></td>
+                                                <td><?php echo htmlspecialchars($com['modelo'] ?? ''); ?></td>
+                                                <td style="font-size: 11px; color: #7f8c8d;"><?php echo htmlspecialchars($com['vin'] ?? ''); ?></td>
                                                 <td class="text-right money-venta">$<?php echo number_format($com['valor_venta'], 0, ',', '.'); ?></td>
                                             <?php elseif ($filtro_tipo == 'accesorios'): ?>
-                                                <td><?php echo htmlspecialchars($com['modelo']); ?></td>
+                                                <td><?php echo htmlspecialchars($com['modelo'] ?? ''); ?></td>
                                                 <td class="text-right money-venta">$<?php echo number_format($com['base'], 0, ',', '.'); ?></td>
                                             <?php endif; ?>
                                         <?php endif; ?>
@@ -686,6 +705,12 @@ if ($busqueda_realizada) {
                                         
                                         <?php if ($tiene_bono): ?>
                                             <td class="text-right money-bono">$<?php echo number_format($com['bono'], 0, ',', '.'); ?></td>
+                                        <?php endif; ?>
+                                        
+                                        <?php if ($filtro_tipo == 'matriculas'): ?>
+                                            <td class="text-observacion" title="<?php echo htmlspecialchars($com['observacion'] ?? ''); ?>">
+                                                <?php echo htmlspecialchars($com['observacion'] ?? ''); ?>
+                                            </td>
                                         <?php endif; ?>
                                     </tr>
                                 <?php endforeach; ?>

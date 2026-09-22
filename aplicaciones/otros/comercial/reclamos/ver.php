@@ -922,7 +922,7 @@ $estado_info = $estados[$reclamo['estado']] ?? $estados['pendiente'];
                             <textarea 
                                 name="mensaje" 
                                 id="inputMensaje"
-                                placeholder="Escribe tu mensaje aquí..."
+                                placeholder="Escribe tu mensaje aquí... (puedes pegar imágenes con Ctrl+V)"
                                 rows="1"
                             ></textarea>
                             <button type="submit" class="btn-enviar" title="Enviar mensaje">
@@ -1032,6 +1032,54 @@ $estado_info = $estados[$reclamo['estado']] ?? $estados['pendiente'];
                 pesoImagen.textContent = '';
                 previewImagen.style.display = 'none';
                 btnAdjuntar.classList.remove('activo');
+            });
+        }
+
+        // ============================================
+        // PEGAR IMAGEN DESDE EL PORTAPAPELES (Ctrl+V)
+        // ============================================
+        if (textarea && inputImagen) {
+            textarea.addEventListener('paste', function(e) {
+                // Obtener los items del portapapeles
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                
+                let imagenEncontrada = null;
+                
+                // Buscar si hay una imagen en el portapapeles
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        imagenEncontrada = items[i].getAsFile();
+                        break;
+                    }
+                }
+                
+                // Si hay imagen, procesarla
+                if (imagenEncontrada) {
+                    e.preventDefault(); // Evitar pegar la imagen como "texto"
+                    
+                    // Validar tamaño (5 MB)
+                    if (imagenEncontrada.size > 5 * 1024 * 1024) {
+                        alert('❌ La imagen no debe pesar más de 5 MB');
+                        return;
+                    }
+                    
+                    // Validar tipo
+                    const tiposPermitidos = ['image/jpeg', 'image/jpg', 'image/png'];
+                    if (!tiposPermitidos.includes(imagenEncontrada.type)) {
+                        alert('❌ Solo se permiten imágenes JPG, JPEG o PNG');
+                        return;
+                    }
+                    
+                    // Crear un objeto DataTransfer para asignar el archivo al input
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(imagenEncontrada);
+                    inputImagen.files = dataTransfer.files;
+                    
+                    // Disparar el evento change para que se muestre la preview
+                    const event = new Event('change', { bubbles: true });
+                    inputImagen.dispatchEvent(event);
+                }
+                // Si no hay imagen, dejar que pegue el texto normalmente
             });
         }
 
