@@ -1,6 +1,11 @@
 <?php
 // includes/config.php - CONEXIÓN A BD + CONFIGURACIÓN DE SESIÓN
 
+// ============================================
+// ZONA HORARIA (Colombia)
+// ============================================
+date_default_timezone_set('America/Bogota');
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }

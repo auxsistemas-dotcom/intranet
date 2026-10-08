@@ -129,16 +129,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // TIPOS DE PERMISOS
 // ============================================
 $tipos_permisos = [
+    'Acudiente de Obligaciones Escolares' => 'Acudiente de Obligaciones Escolares',
     'Cita Medica' => 'Cita Médica',
     'Cita Medica Urgencias' => 'Cita Médica Urgencias',
     'Cita con Especialista' => 'Cita con Especialista',
-    'Acudiente de Obligaciones Escolares' => 'Acudiente de Obligaciones Escolares',
-    'Permiso para Atender Situaciones Judiciales o Administrativas' => 'Permiso para Atender Situaciones Judiciales o Administrativas',
     'Cumpleaños' => 'Cumpleaños',
+    'Compensatorio' => 'Compensatorio',
+    'Permiso para Atender Situaciones Judiciales o Administrativas' => 'Permiso para Atender Situaciones Judiciales o Administrativas',
     'Permiso Remunerado' => 'Permiso Remunerado',
     'Permiso Menos a 4 Horas' => 'Permiso Menos a 4 Horas',
-    'Jurado de Votacion' => 'Jurado de Votación',
+    'Permiso Por Calamidad Domestica' => 'Permiso Por Calamidad Domestica',
     'Permiso por Votacion' => 'Permiso por Votación',
+    'Jurado de Votacion' => 'Jurado de Votación',
     'Jornada Flexible' => 'Jornada Flexible'
 ];
 
@@ -737,7 +739,7 @@ date_default_timezone_set('America/Bogota');
             <!-- Archivo Adjunto -->
             <?php if (!empty($solicitud['archivo'])): ?>
                 <div class="archivo-container">
-                    <i class="fas fa-file-pdf"></i>
+                    <i class="fas fa-file"></i>
                     <div class="archivo-info">
                         <div class="nombre"><?php echo htmlspecialchars($solicitud['archivo']); ?></div>
                         <?php

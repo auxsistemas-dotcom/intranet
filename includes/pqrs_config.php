@@ -4,7 +4,6 @@
 
 /**
  * URL del Web App de Google Apps Script
- * Reemplaza esto por tu URL real
  */
 $PQRS_API_URL = 'https://script.google.com/macros/s/AKfycbxdcI2JKkOzLKsPI94EyXou9d7RgU1IYDx-L3aitydJbw2gYpovADM1s3C0JjGESfA5bQ/exec';
 
@@ -15,7 +14,17 @@ $PQRS_API_URL = 'https://script.google.com/macros/s/AKfycbxdcI2JKkOzLKsPI94EyXou
 $PQRS_API_TOKEN = 'armotor_pqrs_abcde12345xyzwp';
 
 /**
- * Fecha de última sincronización guardada aquí para no repetir procesos
- * (se actualiza automáticamente cada vez que se sincroniza)
+ * Asunto del correo que se envía AL GESTOR cuando se le asigna una PQRS.
  */
-$PQRS_ULTIMA_SINCRONIZACION = null;
+$ASUNTO_ASIGNACION_PQRS = '📋 Tienes una PQRS por resolver - Sistema Intranet ARMOTOR';
+
+/**
+ * Asunto del correo que se envía AL CLIENTE cuando su PQRS ha sido cerrada.
+ */
+$ASUNTO_CIERRE_PQRS = '✅ Su PQRS ha sido resuelta - Sistema Intranet ARMOTOR';
+
+/**
+ * Switch general: activar o desactivar notificaciones
+ * (útil para pruebas o mantenimiento)
+ */
+$NOTIFICACIONES_PQRS_ACTIVAS = true;

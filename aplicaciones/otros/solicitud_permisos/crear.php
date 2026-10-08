@@ -20,17 +20,19 @@ $mensaje = '';
 
 // Tipos de permisos
 $tipos_permisos = [
+    'Acudiente de Obligaciones Escolares',
     'Cita Medica',
     'Cita Medica Urgencias',
     'Cita con Especialista',
-    'Acudiente de Obligaciones Escolares',
-    'Permiso para Atender Situaciones Judiciales o Administrativas',
     'Cumpleaños',
+    'Compensatorio',
+    'Permiso para Atender Situaciones Judiciales o Administrativas',
     'Permiso Remunerado',
     'Permiso Menos a 4 Horas',
-    'Jurado de Votacion',
+    'Permiso Por Calamidad Domestica',
     'Permiso por Votacion',
-    'Jornada Flexible'
+    'Jurado de Votacion',
+    'Jornada Flexible',
 ];
 
 // ============================================
@@ -67,11 +69,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $archivo_nombre_original = $_FILES['archivo']['name'];
         $archivo_tamano = $_FILES['archivo']['size'];
         
-        $extensiones_permitidas = ['pdf', 'jpg', 'jpeg', 'png'];
+        $extensiones_permitidas = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
         $extension = strtolower(pathinfo($archivo_nombre_original, PATHINFO_EXTENSION));
         
         if (!in_array($extension, $extensiones_permitidas)) {
-            $archivo_error = "❌ Solo se permiten archivos PDF, JPG y PNG";
+            $archivo_error = "❌ Solo se permiten archivos PDF, JPG, PNG y DOC";
         } elseif ($archivo_tamano > 6291456) {
             $archivo_error = "❌ El archivo no debe superar los 6MB";
         } else {
@@ -476,11 +478,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="form-group">
-                    <label>Adjuntar Archivo (PDF o Imagen)</label>
+                    <label>Adjuntar Archivo (PDF, DOC o Imagen)</label>
                     <div class="file-input-wrapper">
-                        <input type="file" name="archivo" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.doc">
                         <span class="file-info">
-                            <i class="fas fa-info-circle"></i> PDF, JPG, PNG (max 6MB)
+                            <i class="fas fa-info-circle"></i> PDF, JPG, PNG, DOC (max 6MB)
                         </span>
                     </div>
                 </div>

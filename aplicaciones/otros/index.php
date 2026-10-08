@@ -486,6 +486,21 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
                 </div>
                 <i class="fas fa-arrow-right app-arrow"></i>
             </div>
+
+            <!-- PQRSF -->
+            <div class="app-card" 
+                data-url="pqrs/index.php" 
+                data-name="PQRSF" 
+                data-requiere-login="false">
+                <div class="app-icon">
+                    <i class="fas fa-bullhorn"></i>
+                </div>
+                <div class="app-info">
+                    <h3 class="app-name">PQRSF</h3>
+                    <p class="app-description">Peticiones, Quejas, Reclamos, Sugerencias y Felicitaciones</p>
+                </div>
+                <i class="fas fa-arrow-right app-arrow"></i>
+            </div>
         </div>
     </div>
 </main>

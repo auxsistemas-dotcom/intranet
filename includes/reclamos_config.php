@@ -1,7 +1,8 @@
 <?php
 
 $CORREOS_RECLAMOS = [
-    'auxsistemas@armotor.com',
+    'nominaarmotor@armotor.com',
+    'director.administrativo@armotor.com',
 ];
 
 //Asuntos de los correos

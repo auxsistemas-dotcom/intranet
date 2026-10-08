@@ -316,7 +316,7 @@ if ($busqueda_realizada) {
             background: linear-gradient(135deg, #173742, #1a4a55);
             color: white;
             border: none;
-            padding: 10px 25px;
+            padding: 14px 14px;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
@@ -324,11 +324,29 @@ if ($busqueda_realizada) {
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
         .btn-buscar:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(23,55,66,0.3);
+        }
+
+        .btn-crear {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(230,126,34,0.3);
+        }
+        .btn-crear:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(230,126,34,0.4);
         }
 
         /* ===== RESUMEN ===== */
@@ -567,6 +585,9 @@ if ($busqueda_realizada) {
                 <button type="submit" class="btn-buscar">
                     <i class="fas fa-search"></i> Buscar
                 </button>
+                <a href="../reclamos/crear.php" class="btn-crear">
+                    <i class="fas fa-plus"></i>Reclamo
+                </a>
             </form>
         </div>
 
