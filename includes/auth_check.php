@@ -1,27 +1,98 @@
 <?php
-// includes/auth_check.php - FUNCIONES DE AUTENTICACIÓN
+// includes/auth_check.php - FUNCIONES DE AUTENTICACIÓN (REFORZADO)
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 // ============================================
-// VERIFICAR SESIÓN POR INACTIVIDAD
+// INCLUIR CONFIG (para TIEMPO_INACTIVIDAD y verificarSesionActiva)
 // ============================================
-
-// Incluir config para usar TIEMPO_INACTIVIDAD y la función verificarSesionActiva()
 if (!function_exists('verificarSesionActiva')) {
-    require_once 'config.php';
+    require_once __DIR__ . '/config.php';
 }
 
 // ============================================
-// EJECUTAR VERIFICACIÓN AL CARGAR
+// ✅ FUNCIONES DE SEGURIDAD EXTRA
 // ============================================
 
-// Verificar sesión activa (esto redirige automáticamente si expiró)
+/**
+ * Verifica que la IP y el User-Agent no hayan cambiado.
+ * Detecta robo de cookie de sesión.
+ */
+function verificarBindingSesion() {
+    if (!isset($_SESSION['usuario_id'])) {
+        return true; // No hay sesión aún, nada que validar
+    }
+
+    $ip_actual = $_SERVER['REMOTE_ADDR'] ?? '';
+    $ua_actual = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+    // Verificar IP (solo si tenemos dato guardado - compatibilidad)
+    if (!empty($_SESSION['ip']) && $_SESSION['ip'] !== $ip_actual) {
+        error_log("SECURITY: IP mismatch. user_id=" . $_SESSION['usuario_id']
+            . " esperada=" . $_SESSION['ip'] . " actual=" . $ip_actual);
+        cerrarSesionPorSeguridad();
+        return false;
+    }
+
+    // Verificar User-Agent (solo si tenemos dato guardado)
+    if (!empty($_SESSION['user_agent']) && $_SESSION['user_agent'] !== $ua_actual) {
+        error_log("SECURITY: UA mismatch. user_id=" . $_SESSION['usuario_id']);
+        cerrarSesionPorSeguridad();
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Regenera el ID de sesión cada 15 minutos.
+ * Limita la vida útil de una cookie robada.
+ */
+function rotarIdSesion() {
+    if (!isset($_SESSION['usuario_id'])) {
+        return;
+    }
+
+    $ahora = time();
+    if (!isset($_SESSION['ultima_rotacion']) || ($ahora - $_SESSION['ultima_rotacion']) > 900) {
+        session_regenerate_id(true);
+        $_SESSION['ultima_rotacion'] = $ahora;
+    }
+}
+
+/**
+ * Cierra la sesión por motivos de seguridad y redirige al login.
+ */
+function cerrarSesionPorSeguridad() {
+    $_SESSION = array();
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params["path"], $params["domain"],
+            $params["secure"], $params["httponly"]
+        );
+    }
+    session_destroy();
+    header('Location: /login.php?expirada=1');
+    exit();
+}
+
+// ============================================
+// EJECUTAR VERIFICACIONES AL CARGAR
+// ============================================
+
+// 1. Verificar inactividad (función del config)
 if (function_exists('verificarSesionActiva')) {
     verificarSesionActiva();
 }
+
+// 2. Verificar binding IP/UA
+verificarBindingSesion();
+
+// 3. Rotar ID de sesión si aplica
+rotarIdSesion();
 
 // ============================================
 // FUNCIONES DE AUTENTICACIÓN
@@ -105,7 +176,18 @@ function requiereLogin() {
     }
     
     if (!estaLogueado()) {
-        $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
+        // ✅ VALIDACIÓN ANTI OPEN-REDIRECT
+        // Solo guardar REQUEST_URI si es una ruta interna válida
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (
+            is_string($uri) &&
+            strlen($uri) < 500 &&
+            strpos($uri, '://') === false &&
+            strpos($uri, '//') === false &&
+            strpos($uri, '..') === false
+        ) {
+            $_SESSION['redirect_after_login'] = $uri;
+        }
         redirigir('login.php');
     }
 }

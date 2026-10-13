@@ -7,6 +7,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once 'includes/config.php';
 require_once 'includes/auth_check.php';
 
+requiereLogin();
+
 // ============================================
 // OBTENER ANUNCIO ACTIVO PARA POPUP
 // ============================================

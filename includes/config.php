@@ -6,20 +6,32 @@
 // ============================================
 date_default_timezone_set('America/Bogota');
 
+// ============================================
+// INICIAR SESIÓN
+// ============================================
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$host = 'localhost';
+// ============================================
+// CONEXIÓN A BASE DE DATOS
+// ============================================
+// ⚠️ TODO: mover credenciales a variables de entorno (.env) en producción
+$host   = 'localhost';
 $dbname = 'intranet';
-$user = 'root';
-$pass = 'Armotor2026*';
+$user   = 'root';
+$pass   = 'Armotor2026*';
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass);
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) {
-    die("Error de conexión: " . $e->getMessage());
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false); // ✅ Seguridad extra
+} catch (PDOException $e) {
+    // ✅ Log interno (no se muestra al usuario)
+    error_log("DB CONNECTION ERROR: " . $e->getMessage());
+    // ✅ Mensaje genérico al usuario (no revela detalles internos)
+    http_response_code(500);
+    die("Error interno del servidor. Contacte al administrador.");
 }
 
 // ============================================
@@ -29,10 +41,12 @@ try {
 // Tiempo de inactividad en segundos (30 minutos = 1800 segundos)
 define('TIEMPO_INACTIVIDAD', 1800);
 
-// Definir la URL base del proyecto
-define('BASE_URL', '/intranet/');  // Cambia según tu estructura
+// ✅ URL base del proyecto (sitio corre en la raíz del dominio)
+define('BASE_URL', '/');
 
-// Función para verificar si la sesión ha expirado
+// ============================================
+// FUNCIÓN: VERIFICAR SESIÓN ACTIVA
+// ============================================
 function verificarSesionActiva() {
     // Si no hay sesión, no hacer nada
     if (!isset($_SESSION['usuario_id'])) {
@@ -61,8 +75,8 @@ function verificarSesionActiva() {
         }
         session_destroy();
         
-        // Redirigir al login con mensaje
-        header('Location: ' . BASE_URL . 'login.php?mensaje=⏰ Tu sesión ha expirado por inactividad. Por favor, inicia sesión nuevamente.');
+        // ✅ Redirigir al login con flag (sin emoji, más limpio)
+        header('Location: ' . BASE_URL . 'login.php?expirada=1');
         exit();
     }
     
