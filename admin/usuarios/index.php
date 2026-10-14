@@ -5,7 +5,7 @@ require_once '../../includes/auth_check.php';
 
 // ✅ VERIFICAR ACCESO: SOLO Administradores (rol_id = 1)
 if (!isset($_SESSION['usuario_id'])) {
-    header('Location: ../login.php');
+    header('Location: ../../login.php');
     exit();
 }
 
@@ -79,10 +79,12 @@ if (!empty($busqueda)) {
     $sql_count = "SELECT COUNT(*) as total 
                   FROM usuarios u
                   LEFT JOIN roles r ON u.rol_id = r.id
-                  WHERE u.nombre_completo LIKE :busqueda 
-                     OR u.usuario LIKE :busqueda";
+                  WHERE u.nombre_completo LIKE :busqueda1 
+                     OR u.usuario LIKE :busqueda2";
     $stmt_count = $pdo->prepare($sql_count);
-    $stmt_count->execute(['busqueda' => '%' . $busqueda . '%']);
+    $stmt_count->bindValue(':busqueda1', '%' . $busqueda . '%');
+    $stmt_count->bindValue(':busqueda2', '%' . $busqueda . '%');
+    $stmt_count->execute();
 } else {
     $sql_count = "SELECT COUNT(*) as total FROM usuarios";
     $stmt_count = $pdo->prepare($sql_count);
@@ -96,12 +98,13 @@ if (!empty($busqueda)) {
     $sql = "SELECT u.*, r.nombre as rol_nombre 
             FROM usuarios u
             LEFT JOIN roles r ON u.rol_id = r.id
-            WHERE u.nombre_completo LIKE :busqueda 
-               OR u.usuario LIKE :busqueda
+            WHERE u.nombre_completo LIKE :busqueda1 
+               OR u.usuario LIKE :busqueda2
             ORDER BY u.id ASC
             LIMIT :offset, :registros_por_pagina";
     $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(':busqueda', '%' . $busqueda . '%');
+    $stmt->bindValue(':busqueda1', '%' . $busqueda . '%');
+    $stmt->bindValue(':busqueda2', '%' . $busqueda . '%');
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->bindValue(':registros_por_pagina', $registros_por_pagina, PDO::PARAM_INT);
     $stmt->execute();
