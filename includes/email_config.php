@@ -304,11 +304,6 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
     $mensaje_html .= '
                 </div>
                 
-                <div class="info-box">
-                    <strong>💡 Importante:</strong><br>
-                    Guarda este número de radicado. Lo necesitarás para consultar el estado de tu PQRS.
-                </div>
-                
                 <p style="margin-top: 25px;">
                     Nuestro equipo revisará tu solicitud y te dará respuesta en el menor tiempo posible.
                 </p>
