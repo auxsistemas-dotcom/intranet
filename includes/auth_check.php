@@ -1,12 +1,8 @@
 <?php
 // includes/auth_check.php - FUNCIONES DE AUTENTICACIÓN (REFORZADO)
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 // ============================================
-// INCLUIR CONFIG (para TIEMPO_INACTIVIDAD y verificarSesionActiva)
+// INCLUIR CONFIG (que ya incluye seguridad.php e inicia sesión)
 // ============================================
 if (!function_exists('verificarSesionActiva')) {
     require_once __DIR__ . '/config.php';
@@ -177,7 +173,6 @@ function requiereLogin() {
     
     if (!estaLogueado()) {
         // ✅ VALIDACIÓN ANTI OPEN-REDIRECT
-        // Solo guardar REQUEST_URI si es una ruta interna válida
         $uri = $_SERVER['REQUEST_URI'] ?? '';
         if (
             is_string($uri) &&
@@ -204,7 +199,6 @@ function requiereRol($roles = 1) {
     }
 }
 
-// Verificar si el usuario tiene acceso a un módulo específico en el panel admin
 function tieneAccesoModulo($modulo) {
     global $pdo;
     
@@ -214,17 +208,14 @@ function tieneAccesoModulo($modulo) {
     
     $rol = normalizarRol($_SESSION['rol'] ?? 3);
     
-    // Administrador (1) tiene acceso a todo
     if ($rol == 1) {
         return true;
     }
     
-    // Usuario (3) no tiene acceso a nada en admin
     if ($rol == 3) {
         return false;
     }
     
-    // Supervisor (2): verificar permisos en la base de datos
     try {
         $stmt = $pdo->prepare("
             SELECT 1 FROM roles_permisos rp
@@ -239,7 +230,6 @@ function tieneAccesoModulo($modulo) {
     }
 }
 
-// Obtener los módulos a los que el usuario tiene acceso (para supervisor)
 function obtenerModulosAcceso() {
     global $pdo;
     
@@ -249,19 +239,15 @@ function obtenerModulosAcceso() {
     
     $rol = normalizarRol($_SESSION['rol'] ?? 3);
     
-    // Administrador (1): todos los módulos
     if ($rol == 1) {
         $stmt = $pdo->query("SELECT DISTINCT modulo FROM permisos WHERE accion = 'acceso' AND activo = 1");
-        $resultados = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        return $resultados;
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
     
-    // Usuario (3): sin acceso
     if ($rol == 3) {
         return [];
     }
     
-    // Supervisor (2): módulos asignados
     try {
         $stmt = $pdo->prepare("
             SELECT DISTINCT p.modulo 

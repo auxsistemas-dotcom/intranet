@@ -2,34 +2,13 @@
 /**
  * pqrs_helpers.php
  * Funciones auxiliares para el sistema de PQRS
- * 
- * Incluye:
- * - registrarEventoSistema()   → Inserta eventos automáticos en el timeline
- * - textoEvento()              → Genera el texto legible de cada evento
- * - iconoEvento()              → Devuelve la clase de icono FontAwesome
- * - colorEvento()              → Devuelve la clase CSS de color
- * - estadoLegible()            → Convierte 'en_proceso' → 'En Proceso'
  */
 
 // ============================================
 // 1. REGISTRAR EVENTO DEL SISTEMA
 // ============================================
-/**
- * Inserta un evento automático en el timeline de la PQRS.
- * Se guarda como un mensaje con tipo='sistema'.
- *
- * @param PDO    $pdo            Conexión a la base de datos
- * @param int    $pqrs_id        ID de la PQRS
- * @param int    $usuario_id     ID del usuario que provocó la acción
- * @param string $accion         Tipo de acción: 'creacion', 'cambio_estado', 'asignacion', etc.
- * @param string|null $valor_anterior Valor previo (ej: 'abierto')
- * @param string|null $valor_nuevo    Valor nuevo (ej: 'en_proceso')
- * @param string|null $detalle_extra  Texto adicional opcional
- * @return bool
- */
 function registrarEventoSistema($pdo, $pqrs_id, $usuario_id, $accion, $valor_anterior = null, $valor_nuevo = null, $detalle_extra = null) {
     try {
-        // Generar el texto legible
         $texto = textoEvento($accion, $valor_anterior, $valor_nuevo, $detalle_extra);
 
         $stmt = $pdo->prepare("
@@ -49,7 +28,6 @@ function registrarEventoSistema($pdo, $pqrs_id, $usuario_id, $accion, $valor_ant
         ]);
         
     } catch (PDOException $e) {
-        // No romper el flujo si falla el log
         error_log("Error al registrar evento PQRS: " . $e->getMessage());
         return false;
     }
@@ -58,15 +36,6 @@ function registrarEventoSistema($pdo, $pqrs_id, $usuario_id, $accion, $valor_ant
 // ============================================
 // 2. GENERAR TEXTO LEGIBLE DEL EVENTO
 // ============================================
-/**
- * Convierte una acción + valores en un texto legible.
- *
- * @param string $accion
- * @param string|null $va   Valor anterior
- * @param string|null $vn   Valor nuevo
- * @param string|null $extra Detalle extra
- * @return string
- */
 function textoEvento($accion, $va = null, $vn = null, $extra = null) {
     switch ($accion) {
         case 'creacion':
@@ -120,7 +89,6 @@ function textoEvento($accion, $va = null, $vn = null, $extra = null) {
             return "⏰ Fecha límite cancelada";
         
         case 'vencimiento':
-            // El texto viene en $extra porque ya trae la fecha formateada
             return $extra ?? '⏰ Plazo vencido';
         
         case 'reactivacion':
@@ -138,12 +106,6 @@ function textoEvento($accion, $va = null, $vn = null, $extra = null) {
 // ============================================
 // 3. ICONO PARA CADA TIPO DE EVENTO
 // ============================================
-/**
- * Devuelve la clase del icono FontAwesome según la acción.
- *
- * @param string $accion
- * @return string
- */
 function iconoEvento($accion) {
     $iconos = [
         'creacion'          => 'fa-file-alt',
@@ -172,13 +134,6 @@ function iconoEvento($accion) {
 // ============================================
 // 4. COLOR PARA CADA TIPO DE EVENTO
 // ============================================
-/**
- * Devuelve la clase CSS de color según la acción.
- * Usado para colorear el icono del evento en el timeline.
- *
- * @param string $accion
- * @return string
- */
 function colorEvento($accion) {
     $colores = [
         'creacion'          => 'evento-info',
@@ -203,13 +158,6 @@ function colorEvento($accion) {
 // ============================================
 // 5. CONVERTIR ESTADO A TEXTO LEGIBLE
 // ============================================
-/**
- * Convierte el estado técnico a texto legible.
- * Ej: 'en_proceso' → 'En Proceso'
- *
- * @param string|null $estado
- * @return string
- */
 function estadoLegible($estado) {
     if (empty($estado)) return '—';
     
@@ -226,14 +174,6 @@ function estadoLegible($estado) {
 // ============================================
 // 6. VERIFICAR SI UN USUARIO ES GESTOR DE UNA PQRS
 // ============================================
-/**
- * Devuelve true si el usuario es gestor (principal o secundario) de la PQRS.
- *
- * @param PDO $pdo
- * @param int $pqrs_id
- * @param int $usuario_id
- * @return bool
- */
 function esGestorDePQRS($pdo, $pqrs_id, $usuario_id) {
     $stmt = $pdo->prepare("
         SELECT 1 FROM pqrs_gestores 
@@ -243,7 +183,6 @@ function esGestorDePQRS($pdo, $pqrs_id, $usuario_id) {
     $stmt->execute([$pqrs_id, $usuario_id]);
     if ($stmt->fetch()) return true;
     
-    // Verificar si es principal (aunque no esté en pqrs_gestores)
     $stmt = $pdo->prepare("
         SELECT 1 FROM pqrs 
         WHERE id = ? AND gestor_principal_id = ?
@@ -256,16 +195,7 @@ function esGestorDePQRS($pdo, $pqrs_id, $usuario_id) {
 // ============================================
 // 7. OBTENER GESTORES DE UNA PQRS
 // ============================================
-/**
- * Devuelve la lista de gestores asignados a una PQRS.
- * Incluye al principal primero, luego los secundarios.
- *
- * @param PDO $pdo
- * @param int $pqrs_id
- * @return array Lista de gestores con [id, nombre_completo, es_principal, fecha_asignacion]
- */
 function obtenerGestoresDePQRS($pdo, $pqrs_id) {
-    // Obtener el principal
     $stmt = $pdo->prepare("
         SELECT 
             u.id,
@@ -285,7 +215,6 @@ function obtenerGestoresDePQRS($pdo, $pqrs_id) {
     $stmt->execute([$pqrs_id]);
     $principal = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Obtener los secundarios (con info de quién los añadió)
     $stmt = $pdo->prepare("
         SELECT 
             u.id,
@@ -318,15 +247,6 @@ function obtenerGestoresDePQRS($pdo, $pqrs_id) {
 // ============================================
 // 8. MARCAR MENSAJES COMO LEÍDOS
 // ============================================
-/**
- * Marca todos los mensajes NO leídos de una PQRS como leídos por el usuario.
- * Solo actualiza los que no son del propio usuario.
- *
- * @param PDO $pdo
- * @param int $pqrs_id
- * @param int $usuario_id
- * @return int Cantidad de mensajes actualizados
- */
 function marcarMensajesLeidos($pdo, $pqrs_id, $usuario_id) {
     $stmt = $pdo->prepare("
         UPDATE pqrs_mensajes 
@@ -340,18 +260,15 @@ function marcarMensajesLeidos($pdo, $pqrs_id, $usuario_id) {
 }
 
 // ============================================
-// 9. PROCESAR ARCHIVO SUBIDO
+// 9. PROCESAR ARCHIVO SUBIDO (ACTUALIZADO CON .EML)
 // ============================================
 /**
- * Procesa la subida de un archivo (imagen o PDF).
+ * Procesa la subida de un archivo (imagen, PDF o EML).
  * Guarda en: uploads/pqrs/{AÑO}/{CODIGO_PQRS}/{archivo_unico}
- * 
- * Sirve para el admin Y para el gestor (ambos usan esta misma función).
  *
  * @param array  $file        $_FILES['archivo']
  * @param string $codigo_pqrs Código de la PQRS (ej: PQRS-2026-00047)
- * @return array ['archivo' => ..., 'archivo_tipo' => ..., 'archivo_nombre_original' => ...]
- *               o ['error' => 'mensaje']
+ * @return array
  */
 function procesarArchivoSubido($file, $codigo_pqrs) {
     
@@ -368,25 +285,62 @@ function procesarArchivoSubido($file, $codigo_pqrs) {
         return ['error' => $errores[$file['error']] ?? 'Error desconocido al subir'];
     }
     
-    // Tipos permitidos
-    $tipos_permitidos = [
-        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
-        'application/pdf'
-    ];
-    
     // Tamaño máximo: 10 MB
     $tamaño_maximo = 10 * 1024 * 1024;
     if ($file['size'] > $tamaño_maximo) {
         return ['error' => 'El archivo supera los 10 MB'];
     }
     
-    // Detectar MIME real (no confiar en el del cliente)
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime_real = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
+    // ============================================
+    // 📌 VALIDAR EXTENSIÓN PRIMERO
+    // ============================================
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $extension = preg_replace('/[^a-z0-9]/', '', $extension);
     
-    if (!in_array($mime_real, $tipos_permitidos)) {
-        return ['error' => 'Tipo de archivo no permitido. Solo imágenes y PDF.'];
+    $extensiones_permitidas = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'eml'];
+    
+    if (!in_array($extension, $extensiones_permitidas)) {
+        return ['error' => 'Tipo de archivo no permitido. Solo imágenes, PDF y archivos .eml.'];
+    }
+    
+    // ============================================
+    // 📌 VALIDAR MIME SEGÚN EXTENSIÓN
+    // ============================================
+    
+    if ($extension === 'eml') {
+        // ✅ VALIDACIÓN ESPECIAL PARA .EML
+        // Leer primeros bytes para verificar que sea un email real
+        $primeros_bytes = file_get_contents($file['tmp_name'], false, null, 0, 2000);
+        
+        $es_eml_valido = (
+            stripos($primeros_bytes, 'From:') !== false ||
+            stripos($primeros_bytes, 'Return-Path:') !== false ||
+            stripos($primeros_bytes, 'Received:') !== false ||
+            stripos($primeros_bytes, 'Subject:') !== false ||
+            stripos($primeros_bytes, 'MIME-Version:') !== false ||
+            stripos($primeros_bytes, 'Date:') !== false
+        );
+        
+        if (!$es_eml_valido) {
+            return ['error' => 'El archivo .eml no es válido o no corresponde a un correo.'];
+        }
+        
+        $mime_real = 'message/rfc822';
+        
+    } else {
+        // ✅ VALIDACIÓN NORMAL PARA IMÁGENES Y PDF
+        $tipos_permitidos = [
+            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+            'application/pdf'
+        ];
+        
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime_real = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+        
+        if (!in_array($mime_real, $tipos_permitidos)) {
+            return ['error' => 'Tipo de archivo no permitido. Solo imágenes y PDF.'];
+        }
     }
     
     // ============================================
@@ -396,8 +350,6 @@ function procesarArchivoSubido($file, $codigo_pqrs) {
     $año = date('Y');
     $codigo_limpio = preg_replace('/[^A-Za-z0-9\-_]/', '_', $codigo_pqrs);
     
-    // 🔑 NUEVA RUTA: uploads/pqrs/ en la raíz del proyecto
-    // Como este archivo está en includes/, subimos 1 nivel a la raíz
     $ruta_base = __DIR__ . '/../uploads/pqrs/';
     
     $ruta_año = $ruta_base . $año . '/';
@@ -418,8 +370,6 @@ function procesarArchivoSubido($file, $codigo_pqrs) {
     // 📄 GENERAR NOMBRE ÚNICO
     // ============================================
     
-    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $extension = preg_replace('/[^a-z0-9]/', '', $extension);
     $nombre_unico = uniqid('', true) . '_' . time() . '.' . $extension;
     $ruta_completa = $ruta_pqrs . $nombre_unico;
     
@@ -441,15 +391,9 @@ function procesarArchivoSubido($file, $codigo_pqrs) {
     ];
 }
 
-
 // ============================================
 // 10. VERIFICAR Y APLICAR VENCIMIENTO DE PQRS
 // ============================================
-/**
- * Verifica si una PQRS tiene fecha_limite vencida.
- * Si venció y no está cerrada ni en análisis → la pasa a 'analisis_servicio_cliente'
- * y registra un evento en el timeline.
- */
 function verificarVencimientoPQRS($pdo, $pqrs_id) {
     try {
         $stmt = $pdo->prepare("
@@ -466,20 +410,17 @@ function verificarVencimientoPQRS($pdo, $pqrs_id) {
         if ($p['estado'] === 'cerrado') return false;
         if ($p['estado'] === 'analisis_servicio_cliente') return false;
         
-        // 🔑 Solo usar los primeros 10 caracteres (YYYY-MM-DD) para evitar duplicar la hora
         $fecha_solo_dia = substr($p['fecha_limite'], 0, 10);
         $fecha_limite_ts = strtotime($fecha_solo_dia . ' 00:00:00') + 86400;
         $ahora = time();
         
         if ($ahora >= $fecha_limite_ts) {
-            // 🔑 Aplicar vencimiento
             $pdo->prepare("
                 UPDATE pqrs 
                 SET estado = 'analisis_servicio_cliente', actualizado_el = NOW() 
                 WHERE id = ?
             ")->execute([$pqrs_id]);
             
-            // Evento: "⏰ Venció el 30/09/2026"
             $fecha_legible = date('d/m/Y', strtotime($p['fecha_limite']));
             registrarEventoSistema(
                 $pdo,
@@ -505,9 +446,6 @@ function verificarVencimientoPQRS($pdo, $pqrs_id) {
 // ============================================
 // 11. APLICAR VENCIMIENTOS EN LOTE
 // ============================================
-/**
- * Recorre todas las PQRS con fecha_limite vencida y las pasa a análisis.
- */
 function aplicarVencimientosPendientes($pdo) {
     try {
         $stmt = $pdo->query("
@@ -536,9 +474,6 @@ function aplicarVencimientosPendientes($pdo) {
 // ============================================
 // 12. CALCULAR DÍAS RESTANTES PARA UNA PQRS
 // ============================================
-/**
- * Devuelve información sobre la fecha límite de una PQRS.
- */
 function infoFechaFimite($fecha_limite) {
     if (empty($fecha_limite)) return null;
     

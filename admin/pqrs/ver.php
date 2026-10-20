@@ -1508,7 +1508,7 @@ $prioridades = [
                             </div>
                             
                             <input type="file" name="archivo" id="inputArchivo" 
-                                   accept="image/*,application/pdf" style="display: none;">
+                                   accept="image/*,application/pdf, .eml" style="display: none;">
                             
                             <div class="form-respuesta-acciones">
                                 <button type="button" class="btn-adjuntar" id="btnAdjuntar">

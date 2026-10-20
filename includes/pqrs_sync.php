@@ -4,6 +4,7 @@
 
 require_once __DIR__ . '/pqrs_api.php';
 require_once __DIR__ . '/pqrs_consecutivos.php';
+require_once __DIR__ . '/email_config.php';
 
 /**
  * Sincroniza las PQRS desde la API hacia la base de datos.
@@ -16,6 +17,8 @@ require_once __DIR__ . '/pqrs_consecutivos.php';
  *     'insertadas' => int,
  *     'omitidas' => int,
  *     'errores' => int,
+ *     'correos_enviados' => int,
+ *     'correos_fallidos' => int,
  *     'detalles' => array
  *   ]
  */
@@ -26,6 +29,8 @@ function sincronizarPQRS($pdo) {
         'insertadas' => 0,
         'omitidas' => 0,
         'errores' => 0,
+        'correos_enviados' => 0,
+        'correos_fallidos' => 0,
         'detalles' => []
     ];
     
@@ -41,6 +46,8 @@ function sincronizarPQRS($pdo) {
             'insertadas' => 0,
             'omitidas' => 0,
             'errores' => 0,
+            'correos_enviados' => 0,
+            'correos_fallidos' => 0,
             'detalles' => []
         ];
     }
@@ -54,6 +61,8 @@ function sincronizarPQRS($pdo) {
             'insertadas' => 0,
             'omitidas' => 0,
             'errores' => 0,
+            'correos_enviados' => 0,
+            'correos_fallidos' => 0,
             'detalles' => []
         ];
     }
@@ -153,6 +162,46 @@ function sincronizarPQRS($pdo) {
             $resultado['insertadas']++;
             $resultado['detalles'][] = "✅ $codigo insertada (fila #$fila_sheet)";
             
+            // ============================================
+            // 4.5 📧 ENVIAR CORREO CON EL RADICADO
+            // ============================================
+            $email_contacto = trim($item['email_contacto'] ?? '');
+            $nombre_completo = trim($item['nombre_completo'] ?? '');
+            
+            if (!empty($email_contacto) && filter_var($email_contacto, FILTER_VALIDATE_EMAIL)) {
+                try {
+                    $correo_enviado = enviarCorreoRadicadoPQRS(
+                        $email_contacto,
+                        $nombre_completo,
+                        $codigo,
+                        [
+                            'tipo_solicitud'   => $tipo_solicitud,
+                            'asunto'           => $item['asunto'] ?? '',
+                            'descripcion'      => $item['descripcion'] ?? '',
+                            'fecha_radicacion' => $fecha_radicacion
+                        ]
+                    );
+                    
+                    if ($correo_enviado) {
+                        $resultado['correos_enviados']++;
+                        $resultado['detalles'][] = "📧 Correo enviado a $email_contacto";
+                    } else {
+                        $resultado['correos_fallidos']++;
+                        $resultado['detalles'][] = "⚠️ Fallo al enviar correo a $email_contacto";
+                        error_log("⚠️ Fallo al enviar correo PQRS $codigo a $email_contacto");
+                    }
+                } catch (Exception $e) {
+                    $resultado['correos_fallidos']++;
+                    $resultado['detalles'][] = "❌ Error al enviar correo: " . $e->getMessage();
+                    error_log("❌ Error al enviar correo PQRS $codigo: " . $e->getMessage());
+                }
+            } elseif (empty($email_contacto)) {
+                $resultado['detalles'][] = "⚠️ Sin email de contacto para $codigo";
+            } else {
+                $resultado['detalles'][] = "⚠️ Email inválido para $codigo: $email_contacto";
+                error_log("⚠️ Email inválido en PQRS $codigo: $email_contacto");
+            }
+            
         } catch (Exception $e) {
             $resultado['errores']++;
             $resultado['detalles'][] = "❌ Error en fila #" . ($item['fila'] ?? '?') . ": " . $e->getMessage();
@@ -172,6 +221,12 @@ function sincronizarPQRS($pdo) {
     }
     if ($resultado['errores'] > 0) {
         $partes[] = "{$resultado['errores']} con error";
+    }
+    if ($resultado['correos_enviados'] > 0) {
+        $partes[] = "{$resultado['correos_enviados']} correos enviados";
+    }
+    if ($resultado['correos_fallidos'] > 0) {
+        $partes[] = "{$resultado['correos_fallidos']} correos fallidos";
     }
     
     if (empty($partes)) {

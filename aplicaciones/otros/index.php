@@ -501,6 +501,21 @@ $rol_usuario = isset($usuario['rol']) ? $usuario['rol'] : null;
                 </div>
                 <i class="fas fa-arrow-right app-arrow"></i>
             </div>
+
+            <!-- Operación Vehicular -->
+            <div class="app-card" 
+                data-url="operacion_vehicular/index.php" 
+                data-name="Operación Vehicular" 
+                data-requiere-login="false">
+                <div class="app-icon">
+                    <i class="fas fa-car"></i>
+                </div>
+                <div class="app-info">
+                    <h3 class="app-name">Operación Vehicular</h3>
+                    <p class="app-description">Gestión de conductores y Rutas</p>
+                </div>
+                <i class="fas fa-arrow-right app-arrow"></i>
+            </div>
         </div>
     </div>
 </main>
