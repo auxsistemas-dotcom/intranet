@@ -4,6 +4,7 @@
 require_once '../../includes/config.php';
 require_once '../../includes/auth_check.php';
 require_once '../../includes/pqrs_helpers.php';
+require_once '../../includes/email_config.php'; // ✅ NUEVO: notificaciones por correo
 
 // ============================================
 // 1. VERIFICAR SESIÓN Y ROL
@@ -87,7 +88,6 @@ $pqrs = $stmt->fetch(PDO::FETCH_ASSOC);
 // ============================================
 // 3.5 VERIFICAR SI ESTÁ CERRADA (BLOQUEO TOTAL)
 // ============================================
-// 🔒 Si está cerrada, el ticket NO se puede editar. Solo se puede reabrir.
 $ticket_cerrado = ($pqrs['estado'] === 'cerrado');
 
 // ============================================
@@ -111,7 +111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $texto = trim($_POST['mensaje'] ?? '');
             $archivo_info = null;
             
-            // Procesar archivo si viene
             if (!empty($_FILES['archivo']['name'])) {
                 $archivo_info = procesarArchivoSubido($_FILES['archivo'], $pqrs['codigo']);
                 
@@ -240,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['error'] = "❌ Debes seleccionar un gestor";
             } else {
                 $stmt = $pdo->prepare("
-                    SELECT u.id, u.nombre_completo 
+                    SELECT u.id, u.nombre_completo, u.email 
                     FROM usuarios u
                     INNER JOIN pqrs_gestores_usuarios gu ON gu.usuario_id = u.id AND gu.activo = 1
                     WHERE u.id = ? AND u.activo = 1
@@ -262,6 +261,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $accion_tipo = $gestor_anterior ? 'reasignacion' : 'asignacion';
                     registrarEventoSistema($pdo, $pqrs_id, $usuario_id, $accion_tipo, $gestor_anterior, $nuevo_gestor['nombre_completo']);
+                    
+                    // ✅ NUEVO: enviar notificación por correo al gestor
+                    if (!empty($nuevo_gestor['email'])) {
+                        enviarNotificacionAsignacionPQRS(
+                            $nuevo_gestor['email'],
+                            $nuevo_gestor['nombre_completo'],
+                            $pqrs,
+                            $nombre_usuario
+                        );
+                    } else {
+                        error_log("⚠️ Gestor {$nuevo_gestor['nombre_completo']} (id {$nuevo_gestor_id}) sin email registrado, no se pudo notificar la asignación de la PQRS {$pqrs['codigo']}");
+                    }
                     
                     $_SESSION['mensaje'] = "✅ Gestor asignado: " . $nuevo_gestor['nombre_completo'];
                 }
@@ -351,9 +362,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $fecha_anterior = $pqrs['fecha_limite'] ?? null;
             $estado_anterior = $pqrs['estado'];
             
-            // ============================================
-            // CASO 1: QUITAR FECHA LÍMITE
-            // ============================================
             if ($tipo_fecha === 'sin_fecha') {
                 $pdo->prepare("UPDATE pqrs SET fecha_limite = NULL, actualizado_el = NOW() WHERE id = ?")
                     ->execute([$pqrs_id]);
@@ -369,9 +377,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $_SESSION['mensaje'] = "✅ Fecha límite cancelada";
                 
-            // ============================================
-            // CASO 2: PONER/CAMBIAR FECHA LÍMITE
-            // ============================================
             } elseif ($tipo_fecha === 'con_fecha') {
                 $fecha = $_POST['fecha_limite'] ?? '';
                 
@@ -401,7 +406,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ")->execute([$fecha, $pqrs_id]);
                         }
                         
-                        // Caso A: estaba en análisis → REACTIVACIÓN
                         if ($estado_anterior === 'analisis_servicio_cliente') {
                             registrarEventoSistema(
                                 $pdo, $pqrs_id, $usuario_id,
@@ -412,7 +416,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             );
                             $_SESSION['mensaje'] = "✅ Ticket reactivado hasta el " . date('d/m/Y', strtotime($fecha));
                         }
-                        // Caso B: ya tenía fecha → CAMBIO DE FECHA
                         elseif (!empty($fecha_anterior)) {
                             registrarEventoSistema(
                                 $pdo, $pqrs_id, $usuario_id,
@@ -422,7 +425,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             );
                             $_SESSION['mensaje'] = "✅ Fecha límite cambiada a " . date('d/m/Y', strtotime($fecha));
                         }
-                        // Caso C: primera vez que se pone fecha → FECHA LÍMITE
                         else {
                             registrarEventoSistema(
                                 $pdo, $pqrs_id, $usuario_id,
@@ -441,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // ----------------------------------------
-        // DEVOLVER A EN PROCESO (con o sin nueva fecha)
+        // DEVOLVER A EN PROCESO
         // ----------------------------------------
         elseif ($action === 'devolver_a_proceso') {
             if ($pqrs['estado'] === 'cerrado') {
@@ -549,7 +551,6 @@ $stmt = $pdo->prepare("
 $stmt->execute([$pqrs_id]);
 $pqrs = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Recalcular si está cerrado (por si cambió en POST)
 $ticket_cerrado = ($pqrs['estado'] === 'cerrado');
 
 // ============================================
@@ -571,7 +572,7 @@ $puede_ver_historial      = true;
 $gestores_asignados = obtenerGestoresDePQRS($pdo, $pqrs_id);
 
 // ============================================
-// 8. CARGAR TODOS LOS GESTORES DISPONIBLES (para selects)
+// 8. CARGAR TODOS LOS GESTORES DISPONIBLES
 // ============================================
 $stmt = $pdo->query("
     SELECT 
@@ -623,7 +624,7 @@ if (isset($_SESSION['error'])) {
 }
 
 // ============================================
-// 12. ESTADOS Y TIPOS PARA RENDERIZAR
+// 12. ESTADOS Y TIPOS
 // ============================================
 $estados = [
     'abierto'                  => ['texto' => 'Abierto',                 'clase' => 'estado-abierto',   'icono' => 'fa-folder-open'],
@@ -664,41 +665,21 @@ $prioridades = [
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
         /* ===== HEADER ===== */
-        .header {
-            background: #12232b;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #173742;
-        }
-        .header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .header { background: #12232b; margin-bottom: 30px; border-bottom: 3px solid #173742; }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
         .logo img { width: 130px; }
         .logo-subtitle { color: #8aa8b8; font-size: 14px; margin-top: -5px; }
         .btn-volver {
-            background: #445960;
-            color: white;
-            padding: 8px 15px;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            background: #445960; color: white; padding: 8px 15px;
+            text-decoration: none; border-radius: 8px; transition: all 0.3s;
+            font-size: 14px; display: inline-flex; align-items: center; gap: 8px;
         }
         .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
 
         /* ===== MENSAJES FLASH ===== */
         .mensaje-exito, .mensaje-error {
-            padding: 12px 18px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
+            padding: 12px 18px; border-radius: 8px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 10px; font-size: 14px;
         }
         .mensaje-exito { background: #d4edda; color: #155724; border-left: 4px solid #27ae60; }
         .mensaje-error { background: #f8d7da; color: #721c24; border-left: 4px solid #e74c3c; }
@@ -706,46 +687,21 @@ $prioridades = [
         /* ===== AVISO BLOQUEADO ===== */
         .aviso-bloqueado {
             background: linear-gradient(135deg, #e8f8f5, #d5f5e3);
-            border: 2px solid #27ae60;
-            border-left: 6px solid #1e8449;
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
+            border: 2px solid #27ae60; border-left: 6px solid #1e8449;
+            border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 15px;
             box-shadow: 0 4px 15px rgba(39,174,96,0.15);
         }
-        .aviso-bloqueado i {
-            font-size: 28px;
-            color: #1e8449;
-            flex-shrink: 0;
-        }
-        .aviso-bloqueado strong {
-            font-size: 15px;
-            color: #1a7a3a;
-            display: block;
-            margin-bottom: 3px;
-        }
-        .aviso-bloqueado p {
-            font-size: 13px;
-            color: #196f3d;
-            margin: 0;
-        }
+        .aviso-bloqueado i { font-size: 28px; color: #1e8449; flex-shrink: 0; }
+        .aviso-bloqueado strong { font-size: 15px; color: #1a7a3a; display: block; margin-bottom: 3px; }
+        .aviso-bloqueado p { font-size: 13px; color: #196f3d; margin: 0; }
 
-        /* ===== LAYOUT PRINCIPAL ===== */
+        /* ===== LAYOUT ===== */
         .pqrs-header-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            border-left: 6px solid #e67e22;
+            background: white; border-radius: 16px; padding: 20px 25px;
+            margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 20px; flex-wrap: wrap; border-left: 6px solid #e67e22;
         }
         .pqrs-header-card.estado-abierto { border-left-color: #f39c12; }
         .pqrs-header-card.estado-en_proceso { border-left-color: #3498db; }
@@ -753,43 +709,21 @@ $prioridades = [
         .pqrs-header-card.estado-cerrado { border-left-color: #27ae60; }
 
         .pqrs-titulo h1 {
-            font-size: 22px;
-            color: #12232b;
-            margin-bottom: 5px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
+            font-size: 22px; color: #12232b; margin-bottom: 5px;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         }
         .pqrs-titulo .codigo {
-            font-size: 13px;
-            background: #e8f0fe;
-            color: #173742;
-            padding: 3px 12px;
-            border-radius: 10px;
-            font-weight: 700;
+            font-size: 13px; background: #e8f0fe; color: #173742;
+            padding: 3px 12px; border-radius: 10px; font-weight: 700;
         }
-        .pqrs-titulo .asunto {
-            font-size: 14px;
-            color: #7f8c8d;
-            font-weight: 400;
-        }
+        .pqrs-titulo .asunto { font-size: 14px; color: #7f8c8d; font-weight: 400; }
 
-        .pqrs-header-badges {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
+        .pqrs-header-badges { display: flex; gap: 10px; flex-wrap: wrap; }
 
         /* ===== BADGES ===== */
         .badge-estado {
-            padding: 6px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px;
         }
         .estado-abierto { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .estado-proceso { background: #d6eaf8; color: #1a5276; border: 1px solid #3498db; }
@@ -797,144 +731,79 @@ $prioridades = [
         .estado-cerrado { background: #d5f5e3; color: #1a7a3a; border: 1px solid #27ae60; }
 
         .badge-prioridad {
-            padding: 6px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px;
         }
         .prio-alta { background: #fadbd8; color: #922b21; border: 1px solid #e74c3c; }
         .prio-media { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .prio-baja { background: #eafaf1; color: #196f3d; border: 1px solid #27ae60; }
 
-        /* ===== GRID DE 2 COLUMNAS ===== */
+        /* ===== GRID ===== */
         .pqrs-grid {
-            display: grid;
-            grid-template-columns: 1fr 380px;
-            gap: 20px;
-            margin-bottom: 20px;
+            display: grid; grid-template-columns: 1fr 380px;
+            gap: 20px; margin-bottom: 20px;
         }
-        @media (max-width: 1024px) {
-            .pqrs-grid { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 1024px) { .pqrs-grid { grid-template-columns: 1fr; } }
 
-        /* ===== CARD GENÉRICA ===== */
+        /* ===== CARDS ===== */
         .card {
-            background: white;
-            border-radius: 16px;
-            padding: 22px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
+            background: white; border-radius: 16px; padding: 22px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08); margin-bottom: 20px;
         }
         .card h3 {
-            font-size: 15px;
-            color: #12232b;
-            margin-bottom: 15px;
-            border-left: 3px solid #e67e22;
-            padding-left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 15px; color: #12232b; margin-bottom: 15px;
+            border-left: 3px solid #e67e22; padding-left: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
         .card h3 i { color: #e67e22; font-size: 14px; }
 
-        /* ===== DATOS DEL CLIENTE ===== */
+        /* ===== DATOS ===== */
         .datos-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 12px;
         }
         .dato-item {
-            padding: 10px 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
+            padding: 10px 12px; background: #f8f9fa; border-radius: 8px;
             border-left: 3px solid #173742;
         }
         .dato-label {
-            font-size: 10.5px;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-            margin-bottom: 3px;
+            font-size: 10.5px; color: #7f8c8d; text-transform: uppercase;
+            letter-spacing: 0.5px; font-weight: 600; margin-bottom: 3px;
         }
-        .dato-valor {
-            font-size: 13.5px;
-            color: #12232b;
-            font-weight: 500;
-            word-break: break-word;
-        }
+        .dato-valor { font-size: 13.5px; color: #12232b; font-weight: 500; word-break: break-word; }
 
         .descripcion-box {
-            margin-top: 15px;
-            padding: 15px;
-            background: #fafafa;
-            border-radius: 10px;
-            border: 1px solid #f0f0f0;
-            font-size: 13.5px;
-            line-height: 1.6;
-            color: #2c3e50;
-            white-space: pre-wrap;
-            max-height: 300px;
-            overflow-y: auto;
+            margin-top: 15px; padding: 15px; background: #fafafa;
+            border-radius: 10px; border: 1px solid #f0f0f0;
+            font-size: 13.5px; line-height: 1.6; color: #2c3e50;
+            white-space: pre-wrap; max-height: 300px; overflow-y: auto;
         }
 
         /* ===== ACCIONES ===== */
-        .acciones-seccion {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+        .acciones-seccion { display: flex; flex-direction: column; gap: 12px; }
         .accion-grupo {
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 10px;
+            padding: 12px; background: #f8f9fa; border-radius: 10px;
             border: 1px solid #e9ecef;
         }
         .accion-grupo label {
-            font-size: 11px;
-            font-weight: 600;
-            color: #445960;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            display: block;
-            margin-bottom: 6px;
+            font-size: 11px; font-weight: 600; color: #445960;
+            text-transform: uppercase; letter-spacing: 0.3px;
+            display: block; margin-bottom: 6px;
         }
         .accion-grupo select,
         .accion-grupo input[type="text"] {
-            width: 100%;
-            padding: 8px 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            background: white;
-            color: #2c3e50;
-            cursor: pointer;
+            width: 100%; padding: 8px 12px; border: 2px solid #e0e0e0;
+            border-radius: 6px; font-family: 'Poppins', sans-serif;
+            font-size: 13px; background: white; color: #2c3e50; cursor: pointer;
         }
         .accion-grupo select:focus,
-        .accion-grupo input:focus {
-            outline: none;
-            border-color: #173742;
-        }
+        .accion-grupo input:focus { outline: none; border-color: #173742; }
 
         .btn {
-            padding: 9px 16px;
-            border: none;
-            border-radius: 7px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            transition: all 0.25s ease;
-            text-decoration: none;
-            width: 100%;
+            padding: 9px 16px; border: none; border-radius: 7px; cursor: pointer;
+            font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 13px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+            transition: all 0.25s ease; text-decoration: none; width: 100%;
         }
         .btn-primary { background: linear-gradient(135deg, #173742, #1a4a55); color: white; }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(23,55,66,0.3); }
@@ -945,126 +814,63 @@ $prioridades = [
         .btn-warning { background: linear-gradient(135deg, #d68910, #f39c12); color: white; }
         .btn-warning:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(243,156,18,0.3); }
 
-        /* ===== BOTÓN REABRIR DESTACADO ===== */
         .btn-reabrir {
-            background: linear-gradient(135deg, #1e8449, #27ae60);
-            color: white;
-            padding: 14px 20px;
-            font-size: 15px;
-            font-weight: 700;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(39,174,96,0.4);
+            background: linear-gradient(135deg, #1e8449, #27ae60); color: white;
+            padding: 14px 20px; font-size: 15px; font-weight: 700;
+            border-radius: 10px; box-shadow: 0 4px 15px rgba(39,174,96,0.4);
             transition: all 0.3s ease;
         }
-        .btn-reabrir:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(39,174,96,0.5);
-        }
+        .btn-reabrir:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(39,174,96,0.5); }
 
-        /* ===== GESTORES ASIGNADOS ===== */
-        .gestores-lista {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        /* ===== GESTORES ===== */
+        .gestores-lista { display: flex; flex-direction: column; gap: 8px; }
         .gestor-card {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; background: #f8f9fa; border-radius: 8px;
             border-left: 3px solid #3498db;
         }
-        .gestor-card.principal {
-            border-left-color: #e67e22;
-            background: #fef9e7;
-        }
+        .gestor-card.principal { border-left-color: #e67e22; background: #fef9e7; }
         .gestor-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #173742, #1a4a55);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 12px;
-            flex-shrink: 0;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: linear-gradient(135deg, #173742, #1a4a55); color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 12px; flex-shrink: 0;
         }
-        .gestor-card.principal .gestor-avatar {
-            background: linear-gradient(135deg, #d68910, #f39c12);
-        }
+        .gestor-card.principal .gestor-avatar { background: linear-gradient(135deg, #d68910, #f39c12); }
         .gestor-info-mini { flex: 1; min-width: 0; }
         .gestor-info-mini .nombre {
-            font-weight: 600;
-            font-size: 13px;
-            color: #12232b;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-weight: 600; font-size: 13px; color: #12232b;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .gestor-info-mini .rol {
-            font-size: 11px;
-            color: #7f8c8d;
-        }
+        .gestor-info-mini .rol { font-size: 11px; color: #7f8c8d; }
         .btn-remove-mini {
-            background: transparent;
-            border: none;
-            color: #e74c3c;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 5px;
-            transition: all 0.2s;
+            background: transparent; border: none; color: #e74c3c;
+            cursor: pointer; padding: 5px; border-radius: 5px; transition: all 0.2s;
         }
         .btn-remove-mini:hover { background: #fadbd8; }
 
         /* ===== TIMELINE ===== */
         .timeline {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            max-height: 600px;
-            overflow-y: auto;
-            padding-right: 8px;
+            display: flex; flex-direction: column; gap: 12px;
+            max-height: 600px; overflow-y: auto; padding-right: 8px;
         }
         .timeline::-webkit-scrollbar { width: 6px; }
         .timeline::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 3px; }
 
         .timeline-item {
-            display: flex;
-            gap: 12px;
-            padding: 12px;
-            border-radius: 10px;
-            background: #f8f9fa;
-            border-left: 3px solid #3498db;
+            display: flex; gap: 12px; padding: 12px; border-radius: 10px;
+            background: #f8f9fa; border-left: 3px solid #3498db;
         }
-        .timeline-item.sistema {
-            background: #f0f2f5;
-            border-left-color: #7f8c8d;
-            padding: 8px 12px;
-        }
-        .timeline-item.sistema .timeline-icono {
-            background: #7f8c8d;
-        }
+        .timeline-item.sistema { background: #f0f2f5; border-left-color: #7f8c8d; padding: 8px 12px; }
+        .timeline-item.sistema .timeline-icono { background: #7f8c8d; }
 
         .timeline-icono {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: #3498db;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            font-size: 13px;
-            font-weight: 700;
+            width: 34px; height: 34px; border-radius: 50%;
+            background: #3498db; color: white;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; font-size: 13px; font-weight: 700;
         }
-        .timeline-icono.sistema-icono {
-            background: #7f8c8d;
-        }
+        .timeline-icono.sistema-icono { background: #7f8c8d; }
         .timeline-icono.success-icono { background: #27ae60; }
         .timeline-icono.info-icono { background: #3498db; }
         .timeline-icono.warning-icono { background: #f39c12; }
@@ -1072,178 +878,86 @@ $prioridades = [
 
         .timeline-contenido { flex: 1; min-width: 0; }
         .timeline-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            gap: 10px;
-            margin-bottom: 4px;
-            flex-wrap: wrap;
+            display: flex; justify-content: space-between; align-items: baseline;
+            gap: 10px; margin-bottom: 4px; flex-wrap: wrap;
         }
-        .timeline-autor {
-            font-weight: 600;
-            font-size: 12.5px;
-            color: #12232b;
-        }
-        .timeline-autor.sistema-autor {
-            color: #7f8c8d;
-            font-style: italic;
-        }
-        .timeline-fecha {
-            font-size: 11px;
-            color: #95a5a6;
-            white-space: nowrap;
-        }
+        .timeline-autor { font-weight: 600; font-size: 12.5px; color: #12232b; }
+        .timeline-autor.sistema-autor { color: #7f8c8d; font-style: italic; }
+        .timeline-fecha { font-size: 11px; color: #95a5a6; white-space: nowrap; }
         .timeline-mensaje {
-            font-size: 13px;
-            color: #2c3e50;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-break: break-word;
+            font-size: 13px; color: #2c3e50; line-height: 1.5;
+            white-space: pre-wrap; word-break: break-word;
         }
-        .timeline-item.sistema .timeline-mensaje {
-            font-size: 12.5px;
-            color: #7f8c8d;
-        }
+        .timeline-item.sistema .timeline-mensaje { font-size: 12.5px; color: #7f8c8d; }
 
-        .timeline-adjunto {
-            margin-top: 8px;
-            display: inline-block;
-        }
+        .timeline-adjunto { margin-top: 8px; display: inline-block; }
         .timeline-adjunto img {
-            max-width: 100%;
-            max-height: 200px;
-            border-radius: 8px;
-            cursor: pointer;
-            border: 1px solid #e0e0e0;
-            transition: transform 0.2s;
+            max-width: 100%; max-height: 200px; border-radius: 8px;
+            cursor: pointer; border: 1px solid #e0e0e0; transition: transform 0.2s;
         }
         .timeline-adjunto img:hover { transform: scale(1.02); }
         .timeline-adjunto-pdf {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            text-decoration: none;
-            color: #2c3e50;
-            font-size: 12.5px;
-            transition: all 0.2s;
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: white; border: 1px solid #e0e0e0;
+            border-radius: 8px; text-decoration: none; color: #2c3e50;
+            font-size: 12.5px; transition: all 0.2s;
         }
-        .timeline-adjunto-pdf:hover {
-            border-color: #e74c3c;
-            background: #fef5f5;
-        }
+        .timeline-adjunto-pdf:hover { border-color: #e74c3c; background: #fef5f5; }
         .timeline-adjunto-pdf i { color: #e74c3c; font-size: 18px; }
 
         /* ===== FORM RESPUESTA ===== */
         .form-respuesta {
-            margin-top: 15px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
+            margin-top: 15px; padding: 15px; background: #f8f9fa;
+            border-radius: 10px; border: 1px solid #e9ecef;
         }
         .form-respuesta textarea {
-            width: 100%;
-            min-height: 70px;
-            padding: 10px 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            resize: vertical;
-            color: #2c3e50;
+            width: 100%; min-height: 70px; padding: 10px 12px;
+            border: 2px solid #e0e0e0; border-radius: 8px;
+            font-family: 'Poppins', sans-serif; font-size: 13px;
+            resize: vertical; color: #2c3e50;
         }
         .form-respuesta textarea:focus {
-            outline: none;
-            border-color: #173742;
-            box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+            outline: none; border-color: #173742; box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
         }
         .form-respuesta-acciones {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 10px;
-            gap: 10px;
-            flex-wrap: wrap;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 10px; gap: 10px; flex-wrap: wrap;
         }
         .archivo-preview {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 12px;
-            color: #2c3e50;
-            display: none;
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 10px; background: white; border: 1px solid #e0e0e0;
+            border-radius: 6px; font-size: 12px; color: #2c3e50; display: none;
         }
         .archivo-preview.visible { display: inline-flex; }
         .archivo-preview button {
-            background: none;
-            border: none;
-            color: #e74c3c;
-            cursor: pointer;
-            padding: 2px;
+            background: none; border: none; color: #e74c3c; cursor: pointer; padding: 2px;
         }
 
         .btn-adjuntar {
-            background: #ecf0f1;
-            color: #2c3e50;
-            padding: 8px 14px;
-            border: none;
-            border-radius: 7px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            background: #ecf0f1; color: #2c3e50; padding: 8px 14px;
+            border: none; border-radius: 7px; cursor: pointer; font-size: 13px;
+            font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
             transition: all 0.2s;
         }
         .btn-adjuntar:hover { background: #d5dbdb; }
 
         /* ===== INFO VACÍA ===== */
-        .empty-info {
-            text-align: center;
-            padding: 25px 15px;
-            color: #7f8c8d;
-            font-size: 13px;
-        }
-        .empty-info i {
-            font-size: 32px;
-            color: #d3d3d3;
-            display: block;
-            margin-bottom: 8px;
-        }
+        .empty-info { text-align: center; padding: 25px 15px; color: #7f8c8d; font-size: 13px; }
+        .empty-info i { font-size: 32px; color: #d3d3d3; display: block; margin-bottom: 8px; }
 
-        /* ===== BADGE DE FECHA LÍMITE ===== */
+        /* ===== BADGE FECHA ===== */
         .badge-fecha {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
+            padding: 6px 12px; border-radius: 20px; font-size: 11px;
+            font-weight: 600; display: inline-flex; align-items: center;
+            gap: 5px; white-space: nowrap;
         }
-        .badge-fecha.fecha-ok {
-            background: #eafaf1; color: #196f3d; border: 1px solid #27ae60;
-        }
-        .badge-fecha.fecha-proxima {
-            background: #fef9e7; color: #7f6000; border: 1px solid #f39c12;
-        }
+        .badge-fecha.fecha-ok { background: #eafaf1; color: #196f3d; border: 1px solid #27ae60; }
+        .badge-fecha.fecha-proxima { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .badge-fecha.fecha-hoy {
             background: #fadbd8; color: #922b21; border: 1px solid #e74c3c;
             animation: pulse 2s infinite;
         }
-        .badge-fecha.fecha-vencida {
-            background: #f5b7b1; color: #7b241c; border: 1px solid #c0392b;
-        }
+        .badge-fecha.fecha-vencida { background: #f5b7b1; color: #7b241c; border: 1px solid #c0392b; }
 
         @keyframes pulse {
             0%, 100% { transform: scale(1); }
@@ -1591,7 +1305,6 @@ $prioridades = [
 
                         <?php if ($ticket_cerrado): ?>
 
-                            <!-- 🔒 SOLO REABRIR CUANDO ESTÁ CERRADO -->
                             <div class="empty-info" style="padding: 20px; background: #f0fdf4; border-radius: 10px; border: 2px solid #d5f5e3; margin-bottom: 10px;">
                                 <i class="fas fa-lock" style="color: #27ae60;"></i>
                                 <p style="color: #1a7a3a; font-weight: 600;">Ticket cerrado</p>
@@ -1734,7 +1447,7 @@ $prioridades = [
                                 </form>
                             </div>
 
-                            <!-- BOTÓN DEVOLVER A PROCESO (solo si está en análisis por vencimiento) -->
+                            <!-- BOTÓN DEVOLVER A PROCESO -->
                             <?php if ($pqrs['estado'] === 'analisis_servicio_cliente' && $pqrs['fecha_limite']): ?>
                                 <div class="accion-grupo" style="background: #fef9e7; border-color: #f39c12;">
                                     <label><i class="fas fa-undo"></i> Devolver a proceso</label>
@@ -1863,7 +1576,7 @@ $prioridades = [
             }
 
             // ============================================
-            // PASTE DE CAPTURAS (Ctrl+V)
+            // PASTE DE CAPTURAS
             // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('paste', function(e) {
@@ -1885,7 +1598,7 @@ $prioridades = [
             }
 
             // ============================================
-            // DRAG & DROP DE ARCHIVOS
+            // DRAG & DROP
             // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('dragover', function(e) {
@@ -1936,7 +1649,7 @@ $prioridades = [
             };
 
             // ============================================
-            // ENVIAR CON ENTER (Shift+Enter = nueva línea)
+            // ENVIAR CON ENTER
             // ============================================
             if (textareaMensaje) {
                 textareaMensaje.keydown = null;
