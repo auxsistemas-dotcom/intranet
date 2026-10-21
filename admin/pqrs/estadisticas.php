@@ -196,7 +196,6 @@ $sql = "SELECT AVG(DATEDIFF(p.fecha_cierre, COALESCE(p.marca_temporal, p.creado_
         $where_clause
         AND p.estado = 'cerrado' AND p.fecha_cierre IS NOT NULL";
 
-// Ajustar si no hay WHERE
 if (empty($where_clause)) {
     $sql = "SELECT AVG(DATEDIFF(p.fecha_cierre, COALESCE(p.marca_temporal, p.creado_el))) as promedio
             FROM pqrs p
@@ -503,6 +502,76 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             transform: translateY(-3px);
             box-shadow: 0 6px 20px rgba(39,174,96,0.4);
         }
+        .btn-exportar:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            box-shadow: none;
+            opacity: 0.7;
+        }
+        .btn-exportar:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* ========== FORM EXPORTAR (en el header del título) ========== */
+        .export-form {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            background: rgba(255,255,255,0.05);
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+        }
+        .export-fechas {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .export-campo {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 150px;
+        }
+        .export-campo label {
+            font-size: 10.5px;
+            color: #a8c4d1;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .export-campo label i {
+            color: #ffc107;
+            font-size: 10px;
+        }
+        .export-campo input[type="date"] {
+            padding: 9px 11px;
+            border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            background: rgba(255,255,255,0.95);
+            color: #2c3e50;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        .export-campo input[type="date"]:focus {
+            outline: none;
+            border-color: #ffc107;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(255,193,7,0.25);
+        }
+        .export-form .btn-exportar {
+            padding: 10px 20px;
+            font-size: 13px;
+            height: 42px;
+            margin: 0;
+        }
 
         /* ===== CARD GENÉRICA ===== */
         .card {
@@ -736,6 +805,15 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
         }
 
         /* ===== RESPONSIVE ===== */
+        @media (max-width: 900px) {
+            .export-form {
+                width: 100%;
+                justify-content: stretch;
+            }
+            .export-fechas { flex: 1; }
+            .export-campo { flex: 1; min-width: 120px; }
+            .export-form .btn-exportar { width: 100%; justify-content: center; }
+        }
         @media (max-width: 768px) {
             .header .container { flex-direction: column; gap: 15px; text-align: center; }
             .titulo-pagina { flex-direction: column; text-align: center; }
@@ -744,6 +822,10 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             .filtro-grupo { min-width: 100%; }
             .filtros-acciones { flex-direction: column; }
             .btn-filtrar, .btn-limpiar { width: 100%; justify-content: center; }
+        }
+        @media (max-width: 480px) {
+            .export-fechas { flex-direction: column; width: 100%; }
+            .export-campo { width: 100%; }
         }
     </style>
 </head>
@@ -764,7 +846,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
 
     <div class="container">
 
-        <!-- ===== TÍTULO ===== -->
+        <!-- ===== TÍTULO + EXPORTAR CON RANGO ===== -->
         <div class="titulo-pagina">
             <div class="info">
                 <div class="icono">
@@ -775,9 +857,31 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     <p>Analiza el rendimiento y tendencias de las PQRS</p>
                 </div>
             </div>
-            <a href="estadisticas_export.php?<?php echo $query_export; ?>" class="btn-exportar">
-                <i class="fas fa-file-excel"></i> Exportar a Excel
-            </a>
+
+            <!-- ✅ NUEVO: Filtro de fechas + Exportar -->
+            <form method="GET" action="estadisticas_export.php" class="export-form" id="formExportar">
+                <div class="export-fechas">
+                    <div class="export-campo">
+                        <label for="export_desde"><i class="fas fa-calendar-day"></i> Desde</label>
+                        <input type="date"
+                               name="fecha_desde"
+                               id="export_desde"
+                               value="<?php echo htmlspecialchars($filtro_fecha_desde); ?>"
+                               required>
+                    </div>
+                    <div class="export-campo">
+                        <label for="export_hasta"><i class="fas fa-calendar-day"></i> Hasta</label>
+                        <input type="date"
+                               name="fecha_hasta"
+                               id="export_hasta"
+                               value="<?php echo htmlspecialchars($filtro_fecha_hasta); ?>"
+                               required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-exportar">
+                    <i class="fas fa-file-excel"></i> Exportar a Excel
+                </button>
+            </form>
         </div>
 
         <!-- ===== FILTROS ===== -->
@@ -991,7 +1095,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             <!-- ===== GRÁFICOS ===== -->
             <div class="graficos-grid">
 
-                <!-- Gráfico 1: Distribución por Tipo -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-chart-pie"></i> Distribución por Tipo</h3>
                     <div class="grafico-container">
@@ -999,7 +1102,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Gráfico 2: Distribución por Estado -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-chart-bar"></i> Distribución por Estado</h3>
                     <div class="grafico-container">
@@ -1007,7 +1109,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Gráfico 3: Evolución mensual -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-chart-line"></i> Evolución últimos 12 meses</h3>
                     <div class="grafico-container">
@@ -1015,7 +1116,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Gráfico 4: Distribución por Prioridad -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-bolt"></i> Distribución por Prioridad</h3>
                     <div class="grafico-container">
@@ -1023,7 +1123,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Gráfico 5: Top 10 Ciudades -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-city"></i> Top 10 Ciudades</h3>
                     <div class="grafico-container">
@@ -1031,7 +1130,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Gráfico 6: Distribución por Sede -->
                 <div class="grafico-card">
                     <h3><i class="fas fa-building"></i> Distribución por Sede</h3>
                     <div class="grafico-container">
@@ -1047,7 +1145,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
 
     <!-- ===== DATOS PARA LOS GRÁFICOS ===== -->
     <script>
-        // Datos desde PHP
         const dataTipos = <?php echo json_encode($data_tipos); ?>;
         const dataEstados = <?php echo json_encode($data_estados); ?>;
         const dataPrioridades = <?php echo json_encode($data_prioridades); ?>;
@@ -1060,9 +1157,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
-            // ============================================
-            // CONFIGURACIÓN GLOBAL
-            // ============================================
             Chart.defaults.font.family = "'Poppins', sans-serif";
             Chart.defaults.font.size = 12;
             Chart.defaults.color = '#2c3e50';
@@ -1072,9 +1166,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 '#f39c12', '#1abc9c', '#34495e', '#16a085', '#c0392b'
             ];
 
-            // ============================================
             // GRÁFICO 1: Distribución por Tipo (Dona)
-            // ============================================
             const ctxTipos = document.getElementById('graficoTipos');
             if (ctxTipos && dataTipos.length > 0) {
                 new Chart(ctxTipos, {
@@ -1110,9 +1202,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
             // GRÁFICO 2: Distribución por Estado (Barras)
-            // ============================================
             const ctxEstados = document.getElementById('graficoEstados');
             if (ctxEstados && dataEstados.length > 0) {
                 const coloresEstados = ['#f39c12', '#3498db', '#9b59b6', '#27ae60'];
@@ -1151,9 +1241,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
             // GRÁFICO 3: Evolución mensual (Línea)
-            // ============================================
             const ctxEvolucion = document.getElementById('graficoEvolucion');
             if (ctxEvolucion && dataEvolucion.length > 0) {
                 new Chart(ctxEvolucion, {
@@ -1204,9 +1292,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
             // GRÁFICO 4: Distribución por Prioridad (Dona)
-            // ============================================
             const ctxPrioridades = document.getElementById('graficoPrioridades');
             if (ctxPrioridades && dataPrioridades.length > 0) {
                 const coloresPrio = { 'Alta': '#e74c3c', 'Media': '#f39c12', 'Baja': '#27ae60' };
@@ -1234,9 +1320,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
             // GRÁFICO 5: Top 10 Ciudades (Barras horizontales)
-            // ============================================
             const ctxCiudades = document.getElementById('graficoCiudades');
             if (ctxCiudades && dataCiudades.length > 0) {
                 new Chart(ctxCiudades, {
@@ -1267,9 +1351,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
             // GRÁFICO 6: Distribución por Sede (Dona)
-            // ============================================
             const ctxSedes = document.getElementById('graficoSedes');
             if (ctxSedes && dataSedes.length > 0) {
                 new Chart(ctxSedes, {
@@ -1313,6 +1395,29 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     if (rangoFechasHasta) rangoFechasHasta.style.display = valor === 'personalizado' ? '' : 'none';
                     if (mesEspecifico) mesEspecifico.style.display = valor === 'mes_especifico' ? '' : 'none';
                     if (anoEspecifico) anoEspecifico.style.display = valor === 'mes_especifico' ? '' : 'none';
+                });
+            }
+
+            // ============================================
+            // ✅ VALIDACIÓN: EXPORTAR SOLO CON RANGO
+            // ============================================
+            const formExportar = document.getElementById('formExportar');
+            if (formExportar) {
+                formExportar.addEventListener('submit', function(e) {
+                    const desde = document.getElementById('export_desde').value;
+                    const hasta = document.getElementById('export_hasta').value;
+
+                    if (!desde || !hasta) {
+                        e.preventDefault();
+                        alert('⚠️ Debes seleccionar un rango de fechas (Desde y Hasta) para exportar.');
+                        return false;
+                    }
+
+                    if (new Date(desde) > new Date(hasta)) {
+                        e.preventDefault();
+                        alert('⚠️ La fecha "Desde" no puede ser mayor que la fecha "Hasta".');
+                        return false;
+                    }
                 });
             }
 
