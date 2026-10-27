@@ -305,7 +305,7 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
                 </div>
                 
                 <p style="margin-top: 25px;">
-                    Nuestro equipo revisará tu solicitud y te dará respuesta en el menor tiempo posible.
+                    Nuestro equipo iniciará la gestión correspondiente y brindará una respuesta en un plazo no mayor a quince (15) días hábiles, de conformidad con los plazos legales vigentes.
                 </p>
                 
                 <p>Gracias por contactarnos.</p>
