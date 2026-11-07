@@ -113,7 +113,7 @@ $puede_interactuar = !$ticket_en_analisis && !$ticket_cerrado;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
-    // 🔒 BLOQUEO BACKEND: si el ticket está en análisis o cerrado
+    // 🔒 BLOQUEO BACKEND
     if (!$puede_interactuar) {
         $_SESSION['error'] = "🔒 Este ticket está bloqueado. No puedes modificar nada.";
         header("Location: ver.php?id=$pqrs_id");
@@ -166,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([$pqrs_id, $usuario_id, $texto]);
                 }
                 
-                // 🔑 Si la PQRS está "abierto" y el gestor comenta → pasa a "en_proceso"
+                // Si la PQRS está "abierto" y el gestor comenta → pasa a "en_proceso"
                 if ($pqrs['estado'] === 'abierto') {
                     $pdo->prepare("UPDATE pqrs SET estado = 'en_proceso', actualizado_el = NOW() WHERE id = ?")
                         ->execute([$pqrs_id]);
@@ -219,11 +219,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // ----------------------------------------
-        // 🔑 AGREGAR COLABORADOR (solo gestor principal)
+        // AGREGAR COLABORADOR
         // ----------------------------------------
         elseif ($action === 'agregar_colaborador') {
             
-            // 🔒 Validar que sea el gestor principal
             if (!$es_gestor_principal) {
                 $_SESSION['error'] = "❌ Solo el gestor principal puede añadir colaboradores";
                 header("Location: ver.php?id=$pqrs_id");
@@ -237,7 +236,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($nuevo_gestor_id == $usuario_id) {
                 $_SESSION['error'] = "❌ No puedes añadirte a ti mismo";
             } else {
-                // Validar que sea gestor registrado
                 $stmt = $pdo->prepare("
                     SELECT u.id, u.nombre_completo 
                     FROM usuarios u
@@ -251,14 +249,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$nuevo_gestor) {
                     $_SESSION['error'] = "❌ Usuario no válido o no es gestor";
                 } else {
-                    // Verificar que no esté ya asignado
                     $stmt = $pdo->prepare("SELECT 1 FROM pqrs_gestores WHERE pqrs_id = ? AND usuario_id = ? LIMIT 1");
                     $stmt->execute([$pqrs_id, $nuevo_gestor_id]);
                     
                     if ($stmt->fetch()) {
                         $_SESSION['error'] = "❌ Ese gestor ya está asignado a esta PQRS";
                     } else {
-                        // Insertar con asignado_por = gestor_principal_id
                         $stmt = $pdo->prepare("
                             INSERT INTO pqrs_gestores 
                                 (pqrs_id, usuario_id, asignado_por, fecha_asignacion) 
@@ -283,11 +279,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // ----------------------------------------
-        // 🔑 QUITAR COLABORADOR (solo gestor principal, solo los que él añadió)
+        // QUITAR COLABORADOR
         // ----------------------------------------
         elseif ($action === 'quitar_colaborador') {
             
-            // 🔒 Validar que sea el gestor principal
             if (!$es_gestor_principal) {
                 $_SESSION['error'] = "❌ Solo el gestor principal puede quitar colaboradores";
                 header("Location: ver.php?id=$pqrs_id");
@@ -299,7 +294,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($gestor_a_quitar <= 0) {
                 $_SESSION['error'] = "❌ Gestor no válido";
             } else {
-                // Verificar que ese colaborador fue añadido por el gestor principal actual
                 $stmt = $pdo->prepare("
                     SELECT pg.id, u.nombre_completo, pg.asignado_por
                     FROM pqrs_gestores pg
@@ -315,7 +309,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($colaborador['asignado_por'] != $usuario_id) {
                     $_SESSION['error'] = "❌ Solo puedes quitar los colaboradores que tú mismo añadiste";
                 } else {
-                    // Eliminar
                     $stmt = $pdo->prepare("DELETE FROM pqrs_gestores WHERE pqrs_id = ? AND usuario_id = ?");
                     $stmt->execute([$pqrs_id, $gestor_a_quitar]);
                     
@@ -368,7 +361,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$pqrs_id]);
 $pqrs = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Recalcular rol del usuario
+// Recalcular rol
 $es_gestor_principal = ($pqrs['gestor_principal_id'] == $usuario_id);
 $es_gestor_secundario = false;
 if (!$es_gestor_principal) {
@@ -387,10 +380,8 @@ $puede_interactuar = !$ticket_en_analisis && !$ticket_cerrado;
 // ============================================
 $gestores_asignados = obtenerGestoresDePQRS($pdo, $pqrs_id);
 
-// IDs de gestores ya asignados (para el dropdown)
 $ids_asignados = array_column($gestores_asignados, 'id');
 
-// Cargar gestores disponibles (que no estén asignados)
 $stmt = $pdo->prepare("
     SELECT 
         u.id,
@@ -406,7 +397,6 @@ $stmt = $pdo->prepare("
 $stmt->execute([$usuario_id]);
 $gestores_todos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Filtrar los ya asignados
 $gestores_disponibles = array_filter($gestores_todos, function($g) use ($ids_asignados) {
     return !in_array($g['id'], $ids_asignados);
 });
@@ -485,85 +475,47 @@ $prioridades = [
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
         /* ===== HEADER ===== */
-        .header {
-            background: #12232b;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #173742;
-        }
-        .header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .header { background: #12232b; margin-bottom: 30px; border-bottom: 3px solid #173742; }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
         .logo img { width: 130px; }
         .logo-subtitle { color: #8aa8b8; font-size: 14px; margin-top: -5px; }
         .btn-volver {
-            background: #445960;
-            color: white;
-            padding: 8px 15px;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            background: #445960; color: white; padding: 8px 15px;
+            text-decoration: none; border-radius: 8px; transition: all 0.3s;
+            font-size: 14px; display: inline-flex; align-items: center; gap: 8px;
         }
         .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
 
         /* ===== MENSAJES FLASH ===== */
         .mensaje-exito, .mensaje-error {
-            padding: 12px 18px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
+            padding: 12px 18px; border-radius: 8px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 10px; font-size: 14px;
         }
         .mensaje-exito { background: #d4edda; color: #155724; border-left: 4px solid #27ae60; }
         .mensaje-error { background: #f8d7da; color: #721c24; border-left: 4px solid #e74c3c; }
 
         /* ===== MI ROL BANNER ===== */
         .mi-rol-banner {
-            padding: 14px 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            color: white;
+            padding: 14px 20px; border-radius: 12px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); color: white;
         }
         .mi-rol-banner.principal { background: linear-gradient(135deg, #d68910, #f39c12); }
         .mi-rol-banner.colaborador { background: linear-gradient(135deg, #173742, #1a4a55); }
         .mi-rol-banner .icono {
-            width: 44px;
-            height: 44px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            flex-shrink: 0;
+            width: 44px; height: 44px; background: rgba(255,255,255,0.2);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 20px; flex-shrink: 0;
         }
         .mi-rol-banner .texto strong { font-size: 14px; display: block; }
         .mi-rol-banner .texto p { font-size: 12px; opacity: 0.9; margin-top: 2px; }
 
         /* ===== HEADER PQRS ===== */
         .pqrs-header-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            border-left: 6px solid #e67e22;
+            background: white; border-radius: 16px; padding: 20px 25px;
+            margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 20px; flex-wrap: wrap; border-left: 6px solid #e67e22;
         }
         .pqrs-header-card.estado-abierto { border-left-color: #f39c12; }
         .pqrs-header-card.estado-en_proceso { border-left-color: #3498db; }
@@ -571,38 +523,20 @@ $prioridades = [
         .pqrs-header-card.estado-cerrado { border-left-color: #27ae60; }
 
         .pqrs-titulo h1 {
-            font-size: 22px;
-            color: #12232b;
-            margin-bottom: 5px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
+            font-size: 22px; color: #12232b; margin-bottom: 5px;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         }
         .pqrs-titulo .codigo {
-            font-size: 13px;
-            background: #e8f0fe;
-            color: #173742;
-            padding: 3px 12px;
-            border-radius: 10px;
-            font-weight: 700;
+            font-size: 13px; background: #e8f0fe; color: #173742;
+            padding: 3px 12px; border-radius: 10px; font-weight: 700;
         }
-        .pqrs-titulo .asunto {
-            font-size: 14px;
-            color: #7f8c8d;
-            font-weight: 400;
-        }
+        .pqrs-titulo .asunto { font-size: 14px; color: #7f8c8d; font-weight: 400; }
 
         .pqrs-header-badges { display: flex; gap: 10px; flex-wrap: wrap; }
 
         .badge-estado {
-            padding: 6px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px;
         }
         .estado-abierto { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .estado-proceso { background: #d6eaf8; color: #1a5276; border: 1px solid #3498db; }
@@ -610,138 +544,69 @@ $prioridades = [
         .estado-cerrado { background: #d5f5e3; color: #1a7a3a; border: 1px solid #27ae60; }
 
         .badge-prioridad {
-            padding: 6px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px;
         }
         .prio-alta { background: #fadbd8; color: #922b21; border: 1px solid #e74c3c; }
         .prio-media { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .prio-baja { background: #eafaf1; color: #196f3d; border: 1px solid #27ae60; }
 
         /* ===== GRID ===== */
-        .pqrs-grid {
-            display: grid;
-            grid-template-columns: 1fr 380px;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        @media (max-width: 1024px) {
-            .pqrs-grid { grid-template-columns: 1fr; }
-        }
+        .pqrs-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 1024px) { .pqrs-grid { grid-template-columns: 1fr; } }
 
         /* ===== CARD ===== */
         .card {
-            background: white;
-            border-radius: 16px;
-            padding: 22px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
+            background: white; border-radius: 16px; padding: 22px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08); margin-bottom: 20px;
         }
         .card h3 {
-            font-size: 15px;
-            color: #12232b;
-            margin-bottom: 15px;
-            border-left: 3px solid #e67e22;
-            padding-left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 15px; color: #12232b; margin-bottom: 15px;
+            border-left: 3px solid #e67e22; padding-left: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
         .card h3 i { color: #e67e22; font-size: 14px; }
 
         /* ===== DATOS ===== */
         .datos-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 12px;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
         }
         .dato-item {
-            padding: 10px 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 3px solid #173742;
+            padding: 10px 12px; background: #f8f9fa; border-radius: 8px; border-left: 3px solid #173742;
         }
         .dato-label {
-            font-size: 10.5px;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-            margin-bottom: 3px;
+            font-size: 10.5px; color: #7f8c8d; text-transform: uppercase;
+            letter-spacing: 0.5px; font-weight: 600; margin-bottom: 3px;
         }
-        .dato-valor {
-            font-size: 13.5px;
-            color: #12232b;
-            font-weight: 500;
-            word-break: break-word;
-        }
+        .dato-valor { font-size: 13.5px; color: #12232b; font-weight: 500; word-break: break-word; }
 
         .descripcion-box {
-            padding: 15px;
-            background: #fafafa;
-            border-radius: 10px;
-            border: 1px solid #f0f0f0;
-            font-size: 13.5px;
-            line-height: 1.6;
-            color: #2c3e50;
-            white-space: pre-wrap;
-            max-height: 300px;
-            overflow-y: auto;
+            padding: 15px; background: #fafafa; border-radius: 10px;
+            border: 1px solid #f0f0f0; font-size: 13.5px; line-height: 1.6; color: #2c3e50;
+            white-space: pre-wrap; max-height: 300px; overflow-y: auto;
         }
 
         /* ===== ACCIONES ===== */
-        .acciones-seccion {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
+        .acciones-seccion { display: flex; flex-direction: column; gap: 12px; }
         .accion-grupo {
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
+            padding: 12px; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;
         }
         .accion-grupo label {
-            font-size: 11px;
-            font-weight: 600;
-            color: #445960;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            display: block;
-            margin-bottom: 6px;
+            font-size: 11px; font-weight: 600; color: #445960;
+            text-transform: uppercase; letter-spacing: 0.3px; display: block; margin-bottom: 6px;
         }
         .accion-grupo select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            background: white;
-            color: #2c3e50;
-            cursor: pointer;
+            width: 100%; padding: 8px 12px; border: 2px solid #e0e0e0;
+            border-radius: 6px; font-family: 'Poppins', sans-serif;
+            font-size: 13px; background: white; color: #2c3e50; cursor: pointer;
         }
         .accion-grupo select:focus { outline: none; border-color: #173742; }
 
         .btn {
-            padding: 9px 16px;
-            border: none;
-            border-radius: 7px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            transition: all 0.25s ease;
-            text-decoration: none;
-            width: 100%;
+            padding: 9px 16px; border: none; border-radius: 7px; cursor: pointer;
+            font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 13px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+            transition: all 0.25s ease; text-decoration: none; width: 100%;
         }
         .btn-primary { background: linear-gradient(135deg, #173742, #1a4a55); color: white; }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(23,55,66,0.3); }
@@ -751,116 +616,54 @@ $prioridades = [
         .btn-success:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(39,174,96,0.3); }
 
         /* ===== GESTORES ASIGNADOS ===== */
-        .gestores-lista {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+        .gestores-lista { display: flex; flex-direction: column; gap: 8px; }
         .gestor-card {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 3px solid #3498db;
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px; background: #f8f9fa; border-radius: 8px; border-left: 3px solid #3498db;
         }
-        .gestor-card.principal {
-            border-left-color: #e67e22;
-            background: #fef9e7;
-        }
-        .gestor-card.yo {
-            border-left-color: #27ae60;
-            background: #eafaf1;
-        }
+        .gestor-card.principal { border-left-color: #e67e22; background: #fef9e7; }
+        .gestor-card.yo { border-left-color: #27ae60; background: #eafaf1; }
         .gestor-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #173742, #1a4a55);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 12px;
-            flex-shrink: 0;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: linear-gradient(135deg, #173742, #1a4a55); color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 12px; flex-shrink: 0;
         }
-        .gestor-card.principal .gestor-avatar {
-            background: linear-gradient(135deg, #d68910, #f39c12);
-        }
-        .gestor-card.yo .gestor-avatar {
-            background: linear-gradient(135deg, #27ae60, #2ecc71);
-        }
+        .gestor-card.principal .gestor-avatar { background: linear-gradient(135deg, #d68910, #f39c12); }
+        .gestor-card.yo .gestor-avatar { background: linear-gradient(135deg, #27ae60, #2ecc71); }
         .gestor-info-mini { flex: 1; min-width: 0; }
         .gestor-info-mini .nombre {
-            font-weight: 600;
-            font-size: 13px;
-            color: #12232b;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-weight: 600; font-size: 13px; color: #12232b;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .gestor-info-mini .rol { font-size: 11px; color: #7f8c8d; }
-        .gestor-info-mini .rol .agregado-por {
-            color: #95a5a6;
-            font-style: italic;
-        }
+        .gestor-info-mini .rol .agregado-por { color: #95a5a6; font-style: italic; }
 
         .btn-remove-mini {
-            background: transparent;
-            border: none;
-            color: #e74c3c;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 5px;
-            transition: all 0.2s;
-            flex-shrink: 0;
+            background: transparent; border: none; color: #e74c3c;
+            cursor: pointer; padding: 5px; border-radius: 5px; transition: all 0.2s; flex-shrink: 0;
         }
         .btn-remove-mini:hover { background: #fadbd8; }
 
         /* ===== TIMELINE ===== */
         .timeline {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            max-height: 600px;
-            overflow-y: auto;
-            padding-right: 8px;
+            display: flex; flex-direction: column; gap: 12px;
+            max-height: 600px; overflow-y: auto; padding-right: 8px;
         }
         .timeline::-webkit-scrollbar { width: 6px; }
         .timeline::-webkit-scrollbar-thumb { background: #b0b0b0; border-radius: 3px; }
 
         .timeline-item {
-            display: flex;
-            gap: 12px;
-            padding: 12px;
-            border-radius: 10px;
-            background: #f8f9fa;
-            border-left: 3px solid #3498db;
+            display: flex; gap: 12px; padding: 12px; border-radius: 10px;
+            background: #f8f9fa; border-left: 3px solid #3498db;
         }
-        .timeline-item.sistema {
-            background: #f0f2f5;
-            border-left-color: #7f8c8d;
-            padding: 8px 12px;
-        }
-        .timeline-item.propio {
-            background: #eafaf1;
-            border-left-color: #27ae60;
-        }
+        .timeline-item.sistema { background: #f0f2f5; border-left-color: #7f8c8d; padding: 8px 12px; }
+        .timeline-item.propio { background: #eafaf1; border-left-color: #27ae60; }
 
         .timeline-icono {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: #3498db;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            font-size: 13px;
-            font-weight: 700;
+            width: 34px; height: 34px; border-radius: 50%; background: #3498db; color: white;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; font-size: 13px; font-weight: 700;
         }
         .timeline-icono.sistema-icono { background: #7f8c8d; }
         .timeline-icono.success-icono { background: #27ae60; }
@@ -870,166 +673,78 @@ $prioridades = [
 
         .timeline-contenido { flex: 1; min-width: 0; }
         .timeline-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            gap: 10px;
-            margin-bottom: 4px;
-            flex-wrap: wrap;
+            display: flex; justify-content: space-between; align-items: baseline;
+            gap: 10px; margin-bottom: 4px; flex-wrap: wrap;
         }
-        .timeline-autor {
-            font-weight: 600;
-            font-size: 12.5px;
-            color: #12232b;
-        }
+        .timeline-autor { font-weight: 600; font-size: 12.5px; color: #12232b; }
         .timeline-autor.sistema-autor { color: #7f8c8d; font-style: italic; }
         .timeline-fecha { font-size: 11px; color: #95a5a6; white-space: nowrap; }
         .timeline-mensaje {
-            font-size: 13px;
-            color: #2c3e50;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-break: break-word;
+            font-size: 13px; color: #2c3e50; line-height: 1.5;
+            white-space: pre-wrap; word-break: break-word;
         }
         .timeline-item.sistema .timeline-mensaje { font-size: 12.5px; color: #7f8c8d; }
 
         .timeline-adjunto { margin-top: 8px; display: inline-block; }
         .timeline-adjunto img {
-            max-width: 100%;
-            max-height: 200px;
-            border-radius: 8px;
-            cursor: pointer;
-            border: 1px solid #e0e0e0;
-            transition: transform 0.2s;
+            max-width: 100%; max-height: 200px; border-radius: 8px;
+            cursor: pointer; border: 1px solid #e0e0e0; transition: transform 0.2s;
         }
         .timeline-adjunto img:hover { transform: scale(1.02); }
         .timeline-adjunto-pdf {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            text-decoration: none;
-            color: #2c3e50;
-            font-size: 12.5px;
-            transition: all 0.2s;
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 12px; background: white; border: 1px solid #e0e0e0;
+            border-radius: 8px; text-decoration: none; color: #2c3e50; font-size: 12.5px; transition: all 0.2s;
         }
         .timeline-adjunto-pdf:hover { border-color: #e74c3c; background: #fef5f5; }
         .timeline-adjunto-pdf i { color: #e74c3c; font-size: 18px; }
 
         /* ===== FORM RESPUESTA ===== */
         .form-respuesta {
-            margin-top: 15px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
+            margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;
         }
         .form-respuesta textarea {
-            width: 100%;
-            min-height: 70px;
-            padding: 10px 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            resize: vertical;
-            color: #2c3e50;
+            width: 100%; min-height: 70px; padding: 10px 12px;
+            border: 2px solid #e0e0e0; border-radius: 8px;
+            font-family: 'Poppins', sans-serif; font-size: 13px; resize: vertical; color: #2c3e50;
         }
         .form-respuesta textarea:focus {
-            outline: none;
-            border-color: #173742;
-            box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+            outline: none; border-color: #173742; box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
         }
         .form-respuesta-acciones {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 10px;
-            gap: 10px;
-            flex-wrap: wrap;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 10px; gap: 10px; flex-wrap: wrap;
         }
         .archivo-preview {
-            display: none;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 12px;
-            color: #2c3e50;
+            display: none; align-items: center; gap: 8px;
+            padding: 6px 10px; background: white; border: 1px solid #e0e0e0;
+            border-radius: 6px; font-size: 12px; color: #2c3e50;
         }
         .archivo-preview.visible { display: inline-flex; }
-        .archivo-preview button {
-            background: none;
-            border: none;
-            color: #e74c3c;
-            cursor: pointer;
-            padding: 2px;
-        }
+        .archivo-preview button { background: none; border: none; color: #e74c3c; cursor: pointer; padding: 2px; }
 
         .btn-adjuntar {
-            background: #ecf0f1;
-            color: #2c3e50;
-            padding: 8px 14px;
-            border: none;
-            border-radius: 7px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
+            background: #ecf0f1; color: #2c3e50; padding: 8px 14px;
+            border: none; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;
         }
         .btn-adjuntar:hover { background: #d5dbdb; }
 
         /* ===== INFO VACÍA ===== */
-        .empty-info {
-            text-align: center;
-            padding: 25px 15px;
-            color: #7f8c8d;
-            font-size: 13px;
-        }
-        .empty-info i {
-            font-size: 32px;
-            color: #d3d3d3;
-            display: block;
-            margin-bottom: 8px;
-        }
+        .empty-info { text-align: center; padding: 25px 15px; color: #7f8c8d; font-size: 13px; }
+        .empty-info i { font-size: 32px; color: #d3d3d3; display: block; margin-bottom: 8px; }
 
         /* ===== AVISO BLOQUEADO ===== */
         .aviso-bloqueado {
             background: linear-gradient(135deg, #fef9e7, #fdebd0);
-            border: 2px solid #f39c12;
-            border-left: 6px solid #e67e22;
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
+            border: 2px solid #f39c12; border-left: 6px solid #e67e22;
+            border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 15px;
             box-shadow: 0 4px 15px rgba(243,156,18,0.15);
         }
-        .aviso-bloqueado i {
-            font-size: 28px;
-            color: #e67e22;
-            flex-shrink: 0;
-        }
-        .aviso-bloqueado strong {
-            font-size: 15px;
-            color: #7f6000;
-            display: block;
-            margin-bottom: 3px;
-        }
-        .aviso-bloqueado p {
-            font-size: 13px;
-            color: #a06a00;
-            margin: 0;
-        }
+        .aviso-bloqueado i { font-size: 28px; color: #e67e22; flex-shrink: 0; }
+        .aviso-bloqueado strong { font-size: 15px; color: #7f6000; display: block; margin-bottom: 3px; }
+        .aviso-bloqueado p { font-size: 13px; color: #a06a00; margin: 0; }
 
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
@@ -1042,7 +757,6 @@ $prioridades = [
 </head>
 <body>
 
-    <!-- ===== HEADER ===== -->
     <header class="header">
         <div class="container">
             <div class="logo">
@@ -1057,7 +771,6 @@ $prioridades = [
 
     <div class="container">
 
-        <!-- ===== MENSAJES FLASH ===== -->
         <?php if ($mensaje): ?>
             <div class="mensaje-exito" id="mensajeExito">
                 <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($mensaje); ?>
@@ -1070,7 +783,6 @@ $prioridades = [
             </div>
         <?php endif; ?>
 
-        <!-- ===== AVISO: TICKET BLOQUEADO ===== -->
         <?php if (!$puede_interactuar): ?>
             <div class="aviso-bloqueado">
                 <i class="fas fa-lock"></i>
@@ -1093,7 +805,6 @@ $prioridades = [
             </div>
         <?php endif; ?>
 
-        <!-- ===== MI ROL ===== -->
         <div class="mi-rol-banner <?php echo $es_gestor_principal ? 'principal' : 'colaborador'; ?>">
             <div class="icono">
                 <i class="fas fa-<?php echo $es_gestor_principal ? 'star' : 'user-friends'; ?>"></i>
@@ -1112,7 +823,6 @@ $prioridades = [
             </div>
         </div>
 
-        <!-- ===== HEADER DE LA PQRS ===== -->
         <?php
         $estado_info = $estados[$pqrs['estado']] ?? $estados['abierto'];
         $prioridad_info = $prioridades[$pqrs['prioridad']] ?? $prioridades['media'];
@@ -1140,22 +850,17 @@ $prioridades = [
             </div>
         </div>
 
-        <!-- ===== GRID ===== -->
         <div class="pqrs-grid">
 
             <!-- ===== COLUMNA IZQUIERDA ===== -->
             <div>
-                <!-- DATOS DEL CLIENTE -->
+                <!-- DATOS DEL CLIENTE (adaptado al nuevo formulario) -->
                 <div class="card">
                     <h3><i class="fas fa-user"></i> Datos del cliente</h3>
                     <div class="datos-grid">
                         <div class="dato-item">
                             <div class="dato-label">Nombre</div>
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['nombre_completo']); ?></div>
-                        </div>
-                        <div class="dato-item">
-                            <div class="dato-label">Tipo persona</div>
-                            <div class="dato-valor"><?php echo htmlspecialchars($pqrs['tipo_persona'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
                             <div class="dato-label">Documento</div>
@@ -1173,16 +878,26 @@ $prioridades = [
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['email_contacto'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
-                            <div class="dato-label">Ciudad cliente</div>
-                            <div class="dato-valor"><?php echo htmlspecialchars($pqrs['ciudad_cliente'] ?? '—'); ?></div>
-                        </div>
-                        <div class="dato-item">
-                            <div class="dato-label">Ciudad concesionario</div>
+                            <div class="dato-label">Sede de Armotor</div>
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['ciudad_concesionario'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
                             <div class="dato-label">Relacionada con VH</div>
                             <div class="dato-valor"><?php echo $pqrs['relacionada_vh'] ? 'Sí' : 'No'; ?></div>
+                        </div>
+                        <div class="dato-item">
+                            <div class="dato-label">Autorizó tratamiento de datos</div>
+                            <div class="dato-valor">
+                                <?php if (!empty($pqrs['autoriza_datos'])): ?>
+                                    <span style="color: #1a7a3a; font-weight: 600;">
+                                        <i class="fas fa-check-circle"></i> Sí
+                                    </span>
+                                <?php else: ?>
+                                    <span style="color: #922b21; font-weight: 600;">
+                                        <i class="fas fa-times-circle"></i> No
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                         <?php if ($pqrs['relacionada_vh']): ?>
                             <div class="dato-item">
@@ -1192,14 +907,6 @@ $prioridades = [
                             <div class="dato-item">
                                 <div class="dato-label">Placa</div>
                                 <div class="dato-valor"><?php echo htmlspecialchars($pqrs['placa'] ?? '—'); ?></div>
-                            </div>
-                            <div class="dato-item">
-                                <div class="dato-label">Referencia VH</div>
-                                <div class="dato-valor"><?php echo htmlspecialchars($pqrs['referencia_vh'] ?? '—'); ?></div>
-                            </div>
-                            <div class="dato-item">
-                                <div class="dato-label">Modelo</div>
-                                <div class="dato-valor"><?php echo htmlspecialchars($pqrs['modelo'] ?? '—'); ?></div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -1374,10 +1081,8 @@ $prioridades = [
                                     : strtoupper(substr($partes[0], 0, 2));
                                 $soy_yo = ($g['id'] == $usuario_id);
                                 
-                                // 🔑 Determinar si puedo quitar a este colaborador
                                 $puedo_quitar = false;
                                 if (!$g['es_principal'] && $es_gestor_principal && $puede_interactuar) {
-                                    // Solo si yo (gestor principal) lo añadí
                                     if (!empty($g['asignado_por']) && $g['asignado_por'] == $usuario_id) {
                                         $puedo_quitar = true;
                                     }
@@ -1424,7 +1129,6 @@ $prioridades = [
 
                         <?php if (!$puede_interactuar): ?>
                             
-                            <!-- Ticket bloqueado -->
                             <div class="empty-info" style="padding: 20px;">
                                 <i class="fas fa-lock" style="color: #e67e22;"></i>
                                 <p style="color: #7f6000; font-weight: 600;">Acciones bloqueadas</p>
@@ -1439,7 +1143,6 @@ $prioridades = [
                             
                         <?php else: ?>
                             
-                            <!-- CAMBIAR ESTADO -->
                             <?php
                             if ($es_gestor_principal) {
                                 $estados_permitidos = ['en_proceso', 'analisis_servicio_cliente'];
@@ -1468,7 +1171,6 @@ $prioridades = [
                                 </div>
                             <?php endif; ?>
 
-                            <!-- ATAJO: MARCAR EN PROCESO -->
                             <?php if ($pqrs['estado'] === 'abierto'): ?>
                                 <form method="POST">
                                     <input type="hidden" name="action" value="cambiar_estado">
@@ -1479,7 +1181,6 @@ $prioridades = [
                                 </form>
                             <?php endif; ?>
 
-                            <!-- 🔑 AÑADIR COLABORADOR (solo gestor principal) -->
                             <?php if ($es_gestor_principal && !empty($gestores_disponibles)): ?>
                                 <div class="accion-grupo" style="background: #eafaf1; border-color: #a9dfbf;">
                                     <label><i class="fas fa-user-plus"></i> Añadir colaborador</label>
@@ -1534,9 +1235,6 @@ $prioridades = [
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
-            // ============================================
-            // OCULTAR MENSAJE FLASH
-            // ============================================
             const mensajeExito = document.getElementById('mensajeExito');
             if (mensajeExito) {
                 setTimeout(() => {
@@ -1546,9 +1244,6 @@ $prioridades = [
                 }, 4000);
             }
 
-            // ============================================
-            // ADJUNTAR ARCHIVO
-            // ============================================
             const btnAdjuntar = document.getElementById('btnAdjuntar');
             const inputArchivo = document.getElementById('inputArchivo');
             const archivoPreview = document.getElementById('archivoPreview');
@@ -1580,9 +1275,6 @@ $prioridades = [
                 archivoPreview.classList.add('visible');
             }
 
-            // ============================================
-            // PASTE DE CAPTURAS (Ctrl+V)
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('paste', function(e) {
                     const items = e.clipboardData.items;
@@ -1602,9 +1294,6 @@ $prioridades = [
                 });
             }
 
-            // ============================================
-            // DRAG & DROP
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('dragover', function(e) {
                     e.preventDefault();
@@ -1629,9 +1318,6 @@ $prioridades = [
                 });
             }
 
-            // ============================================
-            // ENVIAR CON ENTER
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter' && !e.shiftKey) {

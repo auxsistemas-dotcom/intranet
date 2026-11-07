@@ -229,30 +229,30 @@ $tipo_mas_frecuente_nombre = $tipos_solicitud[$tipo_mas_frecuente] ?? '—';
 $tipo_mas_frecuente_cantidad = $tipo_top['total'] ?? 0;
 
 // ============================================
-// KPI 5: CIUDAD CON MÁS PQRS
+// KPI 5: SEDE CON MÁS PQRS (antes "Ciudad")
 // ============================================
-$sql = "SELECT p.ciudad_cliente, COUNT(*) as total
+$sql = "SELECT p.ciudad_concesionario AS sede, COUNT(*) as total
         FROM pqrs p
         $where_clause
-        AND p.ciudad_cliente IS NOT NULL AND p.ciudad_cliente != ''
-        GROUP BY p.ciudad_cliente
+        AND p.ciudad_concesionario IS NOT NULL AND p.ciudad_concesionario != ''
+        GROUP BY p.ciudad_concesionario
         ORDER BY total DESC
         LIMIT 1";
 
 if (empty($where_clause)) {
-    $sql = "SELECT p.ciudad_cliente, COUNT(*) as total
+    $sql = "SELECT p.ciudad_concesionario AS sede, COUNT(*) as total
             FROM pqrs p
-            WHERE p.ciudad_cliente IS NOT NULL AND p.ciudad_cliente != ''
-            GROUP BY p.ciudad_cliente
+            WHERE p.ciudad_concesionario IS NOT NULL AND p.ciudad_concesionario != ''
+            GROUP BY p.ciudad_concesionario
             ORDER BY total DESC
             LIMIT 1";
 }
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
-$ciudad_top = $stmt->fetch(PDO::FETCH_ASSOC);
-$ciudad_mas_pqrs = $ciudad_top['ciudad_cliente'] ?? '—';
-$ciudad_mas_pqrs_cantidad = $ciudad_top['total'] ?? 0;
+$sede_top = $stmt->fetch(PDO::FETCH_ASSOC);
+$sede_mas_pqrs = $sede_top['sede'] ?? '—';
+$sede_mas_pqrs_cantidad = $sede_top['total'] ?? 0;
 
 // ============================================
 // DATOS PARA GRÁFICOS
@@ -301,29 +301,7 @@ foreach ($data_prioridades_raw as $row) {
     ];
 }
 
-// GRÁFICO 4: Top 10 Ciudades
-$sql = "SELECT p.ciudad_cliente as ciudad, COUNT(*) as total
-        FROM pqrs p
-        $where_clause
-        AND p.ciudad_cliente IS NOT NULL AND p.ciudad_cliente != ''
-        GROUP BY p.ciudad_cliente
-        ORDER BY total DESC
-        LIMIT 10";
-
-if (empty($where_clause)) {
-    $sql = "SELECT p.ciudad_cliente as ciudad, COUNT(*) as total
-            FROM pqrs p
-            WHERE p.ciudad_cliente IS NOT NULL AND p.ciudad_cliente != ''
-            GROUP BY p.ciudad_cliente
-            ORDER BY total DESC
-            LIMIT 10";
-}
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$data_ciudades = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// GRÁFICO 5: Distribución por Sede
+// GRÁFICO 4: Top 10 Sedes (antes "Top 10 Ciudades")
 $sql = "SELECT p.ciudad_concesionario as sede, COUNT(*) as total
         FROM pqrs p
         $where_clause
@@ -345,6 +323,28 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $data_sedes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// GRÁFICO 5: Distribución por Sede (Dona) — antes era la 6
+$sql = "SELECT p.ciudad_concesionario as sede, COUNT(*) as total
+        FROM pqrs p
+        $where_clause
+        AND p.ciudad_concesionario IS NOT NULL AND p.ciudad_concesionario != ''
+        GROUP BY p.ciudad_concesionario
+        ORDER BY total DESC
+        LIMIT 10";
+
+if (empty($where_clause)) {
+    $sql = "SELECT p.ciudad_concesionario as sede, COUNT(*) as total
+            FROM pqrs p
+            WHERE p.ciudad_concesionario IS NOT NULL AND p.ciudad_concesionario != ''
+            GROUP BY p.ciudad_concesionario
+            ORDER BY total DESC
+            LIMIT 10";
+}
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$data_sedes_dona = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // GRÁFICO 6: Evolución mensual (últimos 12 meses)
 $sql = "SELECT 
             DATE_FORMAT(COALESCE(p.marca_temporal, p.creado_el), '%Y-%m') as mes,
@@ -364,7 +364,6 @@ $data_evolucion = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // LISTAS PARA FILTROS
 // ============================================
 
-// Gestores disponibles (solo los que tienen PQRS)
 $sql = "SELECT u.id, u.nombre_completo, COUNT(p.id) as total
         FROM usuarios u
         INNER JOIN pqrs p ON p.gestor_principal_id = u.id
@@ -373,33 +372,26 @@ $sql = "SELECT u.id, u.nombre_completo, COUNT(p.id) as total
         ORDER BY u.nombre_completo ASC";
 $gestores_lista = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
-// Marcas VH únicas
 $sql = "SELECT DISTINCT marca_vh 
         FROM pqrs 
         WHERE marca_vh IS NOT NULL AND marca_vh != ''
         ORDER BY marca_vh ASC";
 $marcas_lista = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
 
-// Sedes únicas (ciudades concesionario)
 $sql = "SELECT DISTINCT ciudad_concesionario 
         FROM pqrs 
         WHERE ciudad_concesionario IS NOT NULL AND ciudad_concesionario != ''
         ORDER BY ciudad_concesionario ASC";
 $sedes_lista = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
 
-// Años disponibles
 $sql = "SELECT DISTINCT YEAR(COALESCE(marca_temporal, creado_el)) as ano
         FROM pqrs
         ORDER BY ano DESC";
 $anos_lista = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
 
-// ============================================
-// CONSTRUIR QUERY STRING PARA EXPORTAR
-// ============================================
 $query_params = $_GET;
 $query_export = http_build_query($query_params);
 
-// ¿Hay filtros activos?
 $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_prioridad)
     || !empty($filtro_gestor) || !empty($filtro_sede)
     || !empty($filtro_marca_vh) || !empty($filtro_buscar)
@@ -419,320 +411,151 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
         body { font-family: 'Poppins', sans-serif; background: #d3d3d3; color: #2c3e50; }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
-        /* ===== HEADER ===== */
-        .header {
-            background: #12232b;
-            margin-bottom: 30px;
-            border-bottom: 3px solid #173742;
-        }
-        .header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .header { background: #12232b; margin-bottom: 30px; border-bottom: 3px solid #173742; }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
         .logo img { width: 130px; }
         .logo-subtitle { color: #8aa8b8; font-size: 14px; margin-top: -5px; }
         .btn-volver {
-            background: #445960;
-            color: white;
-            padding: 8px 15px;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            background: #445960; color: white; padding: 8px 15px;
+            text-decoration: none; border-radius: 8px; transition: all 0.3s;
+            font-size: 14px; display: inline-flex; align-items: center; gap: 8px;
         }
         .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
 
-        /* ===== TÍTULO ===== */
         .titulo-pagina {
             background: linear-gradient(135deg, #12232b, #173742);
-            border-radius: 16px;
-            padding: 25px 30px;
-            margin-bottom: 25px;
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border-radius: 16px; padding: 25px 30px; margin-bottom: 25px;
+            color: white; display: flex; justify-content: space-between; align-items: center;
+            gap: 20px; flex-wrap: wrap; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
-        .titulo-pagina .info {
-            display: flex;
-            align-items: center;
-            gap: 18px;
-        }
+        .titulo-pagina .info { display: flex; align-items: center; gap: 18px; }
         .titulo-pagina .icono {
-            width: 60px;
-            height: 60px;
-            background: rgba(255,193,7,0.15);
-            color: #ffc107;
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            flex-shrink: 0;
+            width: 60px; height: 60px; background: rgba(255,193,7,0.15); color: #ffc107;
+            border-radius: 15px; display: flex; align-items: center; justify-content: center;
+            font-size: 28px; flex-shrink: 0;
         }
         .titulo-pagina h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
         .titulo-pagina p { font-size: 13px; color: #8aa8b8; }
 
         .btn-exportar {
-            background: linear-gradient(135deg, #27ae60, #2ecc71);
-            color: white;
-            border: none;
-            padding: 14px 25px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(39,174,96,0.3);
-            text-decoration: none;
-            white-space: nowrap;
+            background: linear-gradient(135deg, #27ae60, #2ecc71); color: white; border: none;
+            padding: 14px 25px; border-radius: 10px; cursor: pointer;
+            font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 14px;
+            display: inline-flex; align-items: center; gap: 10px;
+            transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(39,174,96,0.3);
+            text-decoration: none; white-space: nowrap;
         }
-        .btn-exportar:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 20px rgba(39,174,96,0.4);
-        }
-        .btn-exportar:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-            box-shadow: none;
-            opacity: 0.7;
-        }
-        .btn-exportar:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
+        .btn-exportar:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(39,174,96,0.4); }
 
-        /* ========== FORM EXPORTAR (en el header del título) ========== */
         .export-form {
-            display: flex;
-            align-items: flex-end;
-            gap: 12px;
-            background: rgba(255,255,255,0.05);
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.1);
-            flex-wrap: wrap;
+            display: flex; align-items: flex-end; gap: 12px;
+            background: rgba(255,255,255,0.05); padding: 12px 16px;
+            border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap;
         }
-        .export-fechas {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .export-campo {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            min-width: 150px;
-        }
+        .export-fechas { display: flex; gap: 10px; flex-wrap: wrap; }
+        .export-campo { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
         .export-campo label {
-            font-size: 10.5px;
-            color: #a8c4d1;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            font-size: 10.5px; color: #a8c4d1; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            display: flex; align-items: center; gap: 4px;
         }
-        .export-campo label i {
-            color: #ffc107;
-            font-size: 10px;
-        }
+        .export-campo label i { color: #ffc107; font-size: 10px; }
         .export-campo input[type="date"] {
-            padding: 9px 11px;
-            border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            background: rgba(255,255,255,0.95);
-            color: #2c3e50;
-            transition: all 0.3s ease;
-            width: 100%;
+            padding: 9px 11px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 8px; font-family: 'Poppins', sans-serif; font-size: 13px;
+            background: rgba(255,255,255,0.95); color: #2c3e50;
+            transition: all 0.3s ease; width: 100%;
         }
         .export-campo input[type="date"]:focus {
-            outline: none;
-            border-color: #ffc107;
-            background: white;
+            outline: none; border-color: #ffc107; background: white;
             box-shadow: 0 0 0 3px rgba(255,193,7,0.25);
         }
-        .export-form .btn-exportar {
-            padding: 10px 20px;
-            font-size: 13px;
-            height: 42px;
-            margin: 0;
-        }
+        .export-form .btn-exportar { padding: 10px 20px; font-size: 13px; height: 42px; margin: 0; }
 
-        /* ===== CARD GENÉRICA ===== */
         .card {
-            background: white;
-            border-radius: 16px;
-            padding: 22px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            background: white; border-radius: 16px; padding: 22px;
+            margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.08);
         }
         .card h3 {
-            font-size: 15px;
-            color: #12232b;
-            margin-bottom: 15px;
-            border-left: 3px solid #e67e22;
-            padding-left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 15px; color: #12232b; margin-bottom: 15px;
+            border-left: 3px solid #e67e22; padding-left: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
         .card h3 i { color: #e67e22; font-size: 14px; }
 
-        /* ===== FILTROS ===== */
         .filtros-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            background: white; border-radius: 16px; padding: 20px;
+            margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.08);
         }
         .filtros-card h3 {
-            font-size: 15px;
-            color: #12232b;
-            margin-bottom: 15px;
-            border-left: 3px solid #173742;
-            padding-left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 15px; color: #12232b; margin-bottom: 15px;
+            border-left: 3px solid #173742; padding-left: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
         .filtros-card h3 i { color: #173742; }
 
-        .filtros-form {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .filtros-fila {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
+        .filtros-form { display: flex; flex-direction: column; gap: 15px; }
+        .filtros-fila { display: flex; gap: 12px; flex-wrap: wrap; }
         .filtro-grupo {
-            flex: 1;
-            min-width: 150px;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
+            flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 5px;
         }
         .filtro-grupo label {
-            font-size: 11px;
-            font-weight: 600;
-            color: #445960;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
+            font-size: 11px; font-weight: 600; color: #445960;
+            text-transform: uppercase; letter-spacing: 0.3px;
+            display: flex; align-items: center; gap: 5px;
         }
         .filtro-grupo label i { color: #173742; font-size: 11px; }
         .filtro-grupo select,
         .filtro-grupo input[type="date"],
         .filtro-grupo input[type="text"],
         .filtro-grupo input[type="number"] {
-            padding: 9px 11px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 13px;
-            background: white;
-            transition: all 0.3s ease;
-            color: #2c3e50;
+            padding: 9px 11px; border: 2px solid #e0e0e0; border-radius: 8px;
+            font-family: 'Poppins', sans-serif; font-size: 13px;
+            background: white; transition: all 0.3s ease; color: #2c3e50;
         }
         .filtro-grupo select:focus,
         .filtro-grupo input:focus {
-            outline: none;
-            border-color: #173742;
-            box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+            outline: none; border-color: #173742; box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
         }
 
         .filtros-acciones {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            padding-top: 10px;
-            border-top: 1px solid #f0f0f0;
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end;
+            padding-top: 10px; border-top: 1px solid #f0f0f0;
         }
         .btn-filtrar {
-            background: linear-gradient(135deg, #173742, #1a4a55);
-            color: white;
-            padding: 11px 25px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 13px;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            background: linear-gradient(135deg, #173742, #1a4a55); color: white;
+            padding: 11px 25px; border: none; border-radius: 8px; cursor: pointer;
+            font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 13px;
+            transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px;
             box-shadow: 0 4px 12px rgba(23,55,66,0.2);
         }
         .btn-filtrar:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(23,55,66,0.3); }
         .btn-limpiar {
-            background: #ecf0f1;
-            color: #2c3e50;
-            padding: 11px 20px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 13px;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
+            background: #ecf0f1; color: #2c3e50; padding: 11px 20px;
+            text-decoration: none; border-radius: 8px;
+            font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 13px;
+            transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px;
         }
         .btn-limpiar:hover { background: #e74c3c; color: white; transform: translateY(-2px); }
 
-        /* ===== KPIs ===== */
         .kpis-grid {
-            display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
+            display: grid; grid-template-columns: repeat(6, 1fr);
+            gap: 15px; margin-bottom: 20px;
         }
         @media (max-width: 1200px) { .kpis-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .kpis-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 480px) { .kpis-grid { grid-template-columns: 1fr; } }
 
         .kpi-card {
-            background: white;
-            border-radius: 12px;
-            padding: 18px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border-top: 4px solid;
+            background: white; border-radius: 12px; padding: 18px; text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 4px solid;
             transition: all 0.3s ease;
         }
         .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
         .kpi-card .icono-kpi {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 8px;
-            font-size: 20px;
-            color: white;
+            width: 46px; height: 46px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 8px; font-size: 20px; color: white;
         }
         .kpi-card .numero { font-size: 26px; font-weight: 700; color: #12232b; line-height: 1; margin-bottom: 4px; }
         .kpi-card .label { font-size: 11px; color: #7f8c8d; font-weight: 500; }
@@ -748,68 +571,34 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
         .kpi-sin { border-color: #e74c3c; }
         .kpi-tipo .icono-kpi { background: linear-gradient(135deg, #9b59b6, #b07cc6); }
         .kpi-tipo { border-color: #9b59b6; }
-        .kpi-ciudad .icono-kpi { background: linear-gradient(135deg, #f39c12, #f8c471); }
-        .kpi-ciudad { border-color: #f39c12; }
+        .kpi-sede .icono-kpi { background: linear-gradient(135deg, #f39c12, #f8c471); }
+        .kpi-sede { border-color: #f39c12; }
 
-        /* ===== GRÁFICOS ===== */
         .graficos-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 20px;
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 20px; margin-bottom: 20px;
         }
         @media (max-width: 992px) { .graficos-grid { grid-template-columns: 1fr; } }
 
         .grafico-card {
-            background: white;
-            border-radius: 16px;
-            padding: 22px;
+            background: white; border-radius: 16px; padding: 22px;
             box-shadow: 0 2px 15px rgba(0,0,0,0.08);
         }
         .grafico-card h3 {
-            font-size: 15px;
-            color: #12232b;
-            margin-bottom: 18px;
-            border-left: 3px solid #173742;
-            padding-left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-size: 15px; color: #12232b; margin-bottom: 18px;
+            border-left: 3px solid #173742; padding-left: 12px;
+            display: flex; align-items: center; gap: 8px;
         }
         .grafico-card h3 i { color: #173742; font-size: 14px; }
 
-        .grafico-container {
-            position: relative;
-            height: 280px;
-            width: 100%;
-        }
+        .grafico-container { position: relative; height: 280px; width: 100%; }
 
-        /* ===== EMPTY STATE ===== */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #7f8c8d;
-        }
-        .empty-state i {
-            font-size: 60px;
-            color: #d3d3d3;
-            margin-bottom: 15px;
-            display: block;
-        }
-        .empty-state h3 {
-            color: #2c3e50;
-            margin-bottom: 8px;
-            font-size: 18px;
-            border: none;
-            padding: 0;
-        }
+        .empty-state { text-align: center; padding: 60px 20px; color: #7f8c8d; }
+        .empty-state i { font-size: 60px; color: #d3d3d3; margin-bottom: 15px; display: block; }
+        .empty-state h3 { color: #2c3e50; margin-bottom: 8px; font-size: 18px; border: none; padding: 0; }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 900px) {
-            .export-form {
-                width: 100%;
-                justify-content: stretch;
-            }
+            .export-form { width: 100%; justify-content: stretch; }
             .export-fechas { flex: 1; }
             .export-campo { flex: 1; min-width: 120px; }
             .export-form .btn-exportar { width: 100%; justify-content: center; }
@@ -831,7 +620,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
 </head>
 <body>
 
-    <!-- ===== HEADER ===== -->
     <header class="header">
         <div class="container">
             <div class="logo">
@@ -846,7 +634,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
 
     <div class="container">
 
-        <!-- ===== TÍTULO + EXPORTAR CON RANGO ===== -->
         <div class="titulo-pagina">
             <div class="info">
                 <div class="icono">
@@ -858,24 +645,17 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 </div>
             </div>
 
-            <!-- ✅ NUEVO: Filtro de fechas + Exportar -->
             <form method="GET" action="estadisticas_export.php" class="export-form" id="formExportar">
                 <div class="export-fechas">
                     <div class="export-campo">
                         <label for="export_desde"><i class="fas fa-calendar-day"></i> Desde</label>
-                        <input type="date"
-                               name="fecha_desde"
-                               id="export_desde"
-                               value="<?php echo htmlspecialchars($filtro_fecha_desde); ?>"
-                               required>
+                        <input type="date" name="fecha_desde" id="export_desde"
+                               value="<?php echo htmlspecialchars($filtro_fecha_desde); ?>" required>
                     </div>
                     <div class="export-campo">
                         <label for="export_hasta"><i class="fas fa-calendar-day"></i> Hasta</label>
-                        <input type="date"
-                               name="fecha_hasta"
-                               id="export_hasta"
-                               value="<?php echo htmlspecialchars($filtro_fecha_hasta); ?>"
-                               required>
+                        <input type="date" name="fecha_hasta" id="export_hasta"
+                               value="<?php echo htmlspecialchars($filtro_fecha_hasta); ?>" required>
                     </div>
                 </div>
                 <button type="submit" class="btn-exportar">
@@ -884,13 +664,11 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             </form>
         </div>
 
-        <!-- ===== FILTROS ===== -->
         <div class="filtros-card">
             <h3><i class="fas fa-filter"></i> Filtros avanzados</h3>
 
             <form method="GET" action="" class="filtros-form">
 
-                <!-- Fila 1: Período -->
                 <div class="filtros-fila">
                     <div class="filtro-grupo">
                         <label><i class="fas fa-calendar-alt"></i> Período</label>
@@ -940,7 +718,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Fila 2: Tipo, Estado, Prioridad, Gestor -->
                 <div class="filtros-fila">
                     <div class="filtro-grupo">
                         <label><i class="fas fa-list"></i> Tipo</label>
@@ -991,7 +768,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     </div>
                 </div>
 
-                <!-- Fila 3: Sede, Marca, Buscar -->
                 <div class="filtros-fila">
                     <div class="filtro-grupo">
                         <label><i class="fas fa-building"></i> Sede</label>
@@ -1038,7 +814,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
         </div>
 
         <?php if ($total_pqrs == 0): ?>
-            <!-- ===== EMPTY STATE ===== -->
             <div class="card">
                 <div class="empty-state">
                     <i class="fas fa-chart-bar"></i>
@@ -1048,7 +823,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             </div>
         <?php else: ?>
 
-            <!-- ===== KPIs ===== -->
             <div class="kpis-grid">
                 <div class="kpi-card kpi-total">
                     <div class="icono-kpi"><i class="fas fa-clipboard-list"></i></div>
@@ -1084,15 +858,14 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                     <div class="sublabel">tipo más frecuente</div>
                 </div>
 
-                <div class="kpi-card kpi-ciudad">
+                <div class="kpi-card kpi-sede">
                     <div class="icono-kpi"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="numero"><?php echo $ciudad_mas_pqrs_cantidad; ?></div>
-                    <div class="label"><?php echo htmlspecialchars($ciudad_mas_pqrs); ?></div>
-                    <div class="sublabel">ciudad con más PQRS</div>
+                    <div class="numero"><?php echo $sede_mas_pqrs_cantidad; ?></div>
+                    <div class="label"><?php echo htmlspecialchars($sede_mas_pqrs); ?></div>
+                    <div class="sublabel">sede con más PQRS</div>
                 </div>
             </div>
 
-            <!-- ===== GRÁFICOS ===== -->
             <div class="graficos-grid">
 
                 <div class="grafico-card">
@@ -1124,16 +897,16 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 </div>
 
                 <div class="grafico-card">
-                    <h3><i class="fas fa-city"></i> Top 10 Ciudades</h3>
+                    <h3><i class="fas fa-building"></i> Top 10 Sedes</h3>
                     <div class="grafico-container">
-                        <canvas id="graficoCiudades"></canvas>
+                        <canvas id="graficoSedes"></canvas>
                     </div>
                 </div>
 
                 <div class="grafico-card">
                     <h3><i class="fas fa-building"></i> Distribución por Sede</h3>
                     <div class="grafico-container">
-                        <canvas id="graficoSedes"></canvas>
+                        <canvas id="graficoSedesDona"></canvas>
                     </div>
                 </div>
 
@@ -1143,17 +916,15 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
 
     </div>
 
-    <!-- ===== DATOS PARA LOS GRÁFICOS ===== -->
     <script>
         const dataTipos = <?php echo json_encode($data_tipos); ?>;
         const dataEstados = <?php echo json_encode($data_estados); ?>;
         const dataPrioridades = <?php echo json_encode($data_prioridades); ?>;
-        const dataCiudades = <?php echo json_encode($data_ciudades); ?>;
         const dataSedes = <?php echo json_encode($data_sedes); ?>;
+        const dataSedesDona = <?php echo json_encode($data_sedes_dona); ?>;
         const dataEvolucion = <?php echo json_encode($data_evolucion); ?>;
     </script>
 
-    <!-- ===== SCRIPT DE GRÁFICOS ===== -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
@@ -1232,10 +1003,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                             }
                         },
                         scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { stepSize: 1, precision: 0 }
-                            }
+                            y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
                         }
                     }
                 });
@@ -1254,22 +1022,16 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                                 data: dataEvolucion.map(d => d.total),
                                 borderColor: '#173742',
                                 backgroundColor: 'rgba(23, 55, 66, 0.1)',
-                                tension: 0.4,
-                                fill: true,
-                                borderWidth: 3,
-                                pointRadius: 4,
-                                pointBackgroundColor: '#173742'
+                                tension: 0.4, fill: true, borderWidth: 3,
+                                pointRadius: 4, pointBackgroundColor: '#173742'
                             },
                             {
                                 label: 'Cerradas',
                                 data: dataEvolucion.map(d => d.cerrados),
                                 borderColor: '#27ae60',
                                 backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                                tension: 0.4,
-                                fill: true,
-                                borderWidth: 3,
-                                pointRadius: 4,
-                                pointBackgroundColor: '#27ae60'
+                                tension: 0.4, fill: true, borderWidth: 3,
+                                pointRadius: 4, pointBackgroundColor: '#27ae60'
                             }
                         ]
                     },
@@ -1277,16 +1039,10 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                position: 'top',
-                                labels: { padding: 15, usePointStyle: true, font: { size: 11 } }
-                            }
+                            legend: { position: 'top', labels: { padding: 15, usePointStyle: true, font: { size: 11 } } }
                         },
                         scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { stepSize: 1, precision: 0 }
-                            }
+                            y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
                         }
                     }
                 });
@@ -1311,25 +1067,22 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: { padding: 12, boxWidth: 12, font: { size: 11 } }
-                            }
+                            legend: { position: 'right', labels: { padding: 12, boxWidth: 12, font: { size: 11 } } }
                         }
                     }
                 });
             }
 
-            // GRÁFICO 5: Top 10 Ciudades (Barras horizontales)
-            const ctxCiudades = document.getElementById('graficoCiudades');
-            if (ctxCiudades && dataCiudades.length > 0) {
-                new Chart(ctxCiudades, {
+            // GRÁFICO 5: Top 10 Sedes (Barras horizontales) — antes "Top 10 Ciudades"
+            const ctxSedes = document.getElementById('graficoSedes');
+            if (ctxSedes && dataSedes.length > 0) {
+                new Chart(ctxSedes, {
                     type: 'bar',
                     data: {
-                        labels: dataCiudades.map(d => d.ciudad),
+                        labels: dataSedes.map(d => d.sede),
                         datasets: [{
                             label: 'PQRS',
-                            data: dataCiudades.map(d => d.total),
+                            data: dataSedes.map(d => d.total),
                             backgroundColor: '#3498db',
                             borderRadius: 6
                         }]
@@ -1338,28 +1091,21 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                         indexAxis: 'y',
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false }
-                        },
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                ticks: { stepSize: 1, precision: 0 }
-                            }
-                        }
+                        plugins: { legend: { display: false } },
+                        scales: { x: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } }
                     }
                 });
             }
 
             // GRÁFICO 6: Distribución por Sede (Dona)
-            const ctxSedes = document.getElementById('graficoSedes');
-            if (ctxSedes && dataSedes.length > 0) {
-                new Chart(ctxSedes, {
+            const ctxSedesDona = document.getElementById('graficoSedesDona');
+            if (ctxSedesDona && dataSedesDona.length > 0) {
+                new Chart(ctxSedesDona, {
                     type: 'pie',
                     data: {
-                        labels: dataSedes.map(d => d.sede),
+                        labels: dataSedesDona.map(d => d.sede),
                         datasets: [{
-                            data: dataSedes.map(d => d.total),
+                            data: dataSedesDona.map(d => d.total),
                             backgroundColor: colorPalette,
                             borderWidth: 2,
                             borderColor: '#fff'
@@ -1369,18 +1115,13 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: { padding: 10, boxWidth: 10, font: { size: 10 } }
-                            }
+                            legend: { position: 'right', labels: { padding: 10, boxWidth: 10, font: { size: 10 } } }
                         }
                     }
                 });
             }
 
-            // ============================================
             // TOGGLE DE CAMPOS DE FECHA
-            // ============================================
             const selectFecha = document.getElementById('selectFecha');
             const rangoFechas = document.getElementById('rangoFechas');
             const rangoFechasHasta = document.getElementById('rangoFechasHasta');
@@ -1390,7 +1131,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
             if (selectFecha) {
                 selectFecha.addEventListener('change', function () {
                     const valor = this.value;
-                    
                     if (rangoFechas) rangoFechas.style.display = valor === 'personalizado' ? '' : 'none';
                     if (rangoFechasHasta) rangoFechasHasta.style.display = valor === 'personalizado' ? '' : 'none';
                     if (mesEspecifico) mesEspecifico.style.display = valor === 'mes_especifico' ? '' : 'none';
@@ -1398,9 +1138,7 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // ============================================
-            // ✅ VALIDACIÓN: EXPORTAR SOLO CON RANGO
-            // ============================================
+            // VALIDACIÓN: EXPORTAR SOLO CON RANGO
             const formExportar = document.getElementById('formExportar');
             if (formExportar) {
                 formExportar.addEventListener('submit', function(e) {

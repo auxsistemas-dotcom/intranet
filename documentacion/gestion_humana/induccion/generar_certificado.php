@@ -44,7 +44,8 @@ function carpetaCompletadaCert($usuario_id, $carpeta_id) {
 function induccionCompletadaCert($usuario_id) {
     global $pdo;
     
-    $stmt = $pdo->prepare("SELECT id FROM categorias_gestion_humana WHERE tipo = 'area' AND activo = 1 ORDER BY orden ASC");
+    // ✅ ORDER BY id ASC (antes: orden ASC)
+    $stmt = $pdo->prepare("SELECT id FROM categorias_gestion_humana WHERE tipo = 'area' AND activo = 1 ORDER BY id ASC");
     $stmt->execute();
     $areas = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
@@ -53,7 +54,8 @@ function induccionCompletadaCert($usuario_id) {
     }
     
     foreach ($areas as $area_id) {
-        $stmt = $pdo->prepare("SELECT id FROM categorias_gestion_humana WHERE padre_id = ? AND tipo = 'carpeta' AND activo = 1");
+        // ✅ ORDER BY id ASC (antes: sin ORDER BY)
+        $stmt = $pdo->prepare("SELECT id FROM categorias_gestion_humana WHERE padre_id = ? AND tipo = 'carpeta' AND activo = 1 ORDER BY id ASC");
         $stmt->execute([$area_id]);
         $carpetas = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
@@ -74,7 +76,8 @@ function obtenerProgresoCert($usuario_id) {
     $areas_completadas = 0;
     $detalle = [];
     
-    $stmt = $pdo->prepare("SELECT id, nombre FROM categorias_gestion_humana WHERE tipo = 'area' AND activo = 1 ORDER BY orden ASC");
+    // ✅ ORDER BY id ASC (antes: orden ASC)
+    $stmt = $pdo->prepare("SELECT id, nombre FROM categorias_gestion_humana WHERE tipo = 'area' AND activo = 1 ORDER BY id ASC");
     $stmt->execute();
     $areas = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -83,7 +86,8 @@ function obtenerProgresoCert($usuario_id) {
         $area_completada = true;
         $carpetas_detalle = [];
         
-        $stmt = $pdo->prepare("SELECT id, nombre FROM categorias_gestion_humana WHERE padre_id = ? AND tipo = 'carpeta' AND activo = 1 ORDER BY orden ASC");
+        // ✅ ORDER BY id ASC (antes: orden ASC)
+        $stmt = $pdo->prepare("SELECT id, nombre FROM categorias_gestion_humana WHERE padre_id = ? AND tipo = 'carpeta' AND activo = 1 ORDER BY id ASC");
         $stmt->execute([$area['id']]);
         $carpetas = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -187,7 +191,7 @@ $pdf->Cell(0, 10, 'CERTIFICADO DE INDUCCIÓN', 0, 1, 'C');
 $pdf->SetDrawColor(243, 156, 18);
 $pdf->Line(85, 58, 125, 58);
 
-$pdf->Ln(12);
+$pdf->Ln(7);
 
 // ============================================
 // TEXTO DEL CERTIFICADO
@@ -267,11 +271,6 @@ $pdf->SetDrawColor(23, 55, 66);
 $pdf->Line(70, $pdf->GetY(), 140, $pdf->GetY());
 
 $pdf->Ln(6);
-
-// Sello ARMOTOR
-$pdf->SetFont('helvetica', 'B', 9);
-$pdf->SetTextColor(23, 55, 66);
-$pdf->Cell(0, 5, 'ARMOTOR', 0, 1, 'C');
 
 $pdf->SetFont('helvetica', '', 6);
 $pdf->SetTextColor(127, 140, 141);

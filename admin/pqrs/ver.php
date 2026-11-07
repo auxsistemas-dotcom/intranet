@@ -4,7 +4,7 @@
 require_once '../../includes/config.php';
 require_once '../../includes/auth_check.php';
 require_once '../../includes/pqrs_helpers.php';
-require_once '../../includes/email_config.php'; // ✅ NUEVO: notificaciones por correo
+require_once '../../includes/email_config.php';
 
 // ============================================
 // 1. VERIFICAR SESIÓN Y ROL
@@ -96,7 +96,6 @@ $ticket_cerrado = ($pqrs['estado'] === 'cerrado');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
-    // 🔒 BLOQUEO BACKEND: si está cerrado, solo se permite "reabrir"
     if ($ticket_cerrado && $action !== 'reabrir') {
         $_SESSION['error'] = "🔒 Este ticket está cerrado. Solo puedes reabrirlo.";
         header("Location: ver.php?id=$pqrs_id");
@@ -262,7 +261,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $accion_tipo = $gestor_anterior ? 'reasignacion' : 'asignacion';
                     registrarEventoSistema($pdo, $pqrs_id, $usuario_id, $accion_tipo, $gestor_anterior, $nuevo_gestor['nombre_completo']);
                     
-                    // ✅ NUEVO: enviar notificación por correo al gestor
                     if (!empty($nuevo_gestor['email'])) {
                         enviarNotificacionAsignacionPQRS(
                             $nuevo_gestor['email'],
@@ -975,7 +973,6 @@ $prioridades = [
 </head>
 <body>
 
-    <!-- ===== HEADER ===== -->
     <header class="header">
         <div class="container">
             <div class="logo">
@@ -990,7 +987,6 @@ $prioridades = [
 
     <div class="container">
 
-        <!-- ===== MENSAJES FLASH ===== -->
         <?php if ($mensaje): ?>
             <div class="mensaje-exito" id="mensajeExito">
                 <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($mensaje); ?>
@@ -1003,7 +999,6 @@ $prioridades = [
             </div>
         <?php endif; ?>
 
-        <!-- ===== AVISO: TICKET CERRADO ===== -->
         <?php if ($ticket_cerrado): ?>
             <div class="aviso-bloqueado">
                 <i class="fas fa-lock"></i>
@@ -1014,7 +1009,6 @@ $prioridades = [
             </div>
         <?php endif; ?>
 
-        <!-- ===== HEADER DE LA PQRS ===== -->
         <?php
         $estado_info = $estados[$pqrs['estado']] ?? $estados['abierto'];
         $prioridad_info = $prioridades[$pqrs['prioridad']] ?? $prioridades['media'];
@@ -1049,22 +1043,17 @@ $prioridades = [
             </div>
         </div>
 
-        <!-- ===== GRID DE 2 COLUMNAS ===== -->
         <div class="pqrs-grid">
 
             <!-- ===== COLUMNA IZQUIERDA: DATOS ===== -->
             <div>
-                <!-- DATOS DEL CLIENTE -->
+                <!-- DATOS DEL CLIENTE (adaptado al nuevo formulario) -->
                 <div class="card">
                     <h3><i class="fas fa-user"></i> Datos del cliente</h3>
                     <div class="datos-grid">
                         <div class="dato-item">
                             <div class="dato-label">Nombre</div>
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['nombre_completo']); ?></div>
-                        </div>
-                        <div class="dato-item">
-                            <div class="dato-label">Tipo persona</div>
-                            <div class="dato-valor"><?php echo htmlspecialchars($pqrs['tipo_persona'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
                             <div class="dato-label">Documento</div>
@@ -1082,16 +1071,26 @@ $prioridades = [
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['email_contacto'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
-                            <div class="dato-label">Ciudad cliente</div>
-                            <div class="dato-valor"><?php echo htmlspecialchars($pqrs['ciudad_cliente'] ?? '—'); ?></div>
-                        </div>
-                        <div class="dato-item">
-                            <div class="dato-label">Ciudad concesionario</div>
+                            <div class="dato-label">Sede de Armotor</div>
                             <div class="dato-valor"><?php echo htmlspecialchars($pqrs['ciudad_concesionario'] ?? '—'); ?></div>
                         </div>
                         <div class="dato-item">
                             <div class="dato-label">Relacionada con VH</div>
                             <div class="dato-valor"><?php echo $pqrs['relacionada_vh'] ? 'Sí' : 'No'; ?></div>
+                        </div>
+                        <div class="dato-item">
+                            <div class="dato-label">Autorizó tratamiento de datos</div>
+                            <div class="dato-valor">
+                                <?php if (!empty($pqrs['autoriza_datos'])): ?>
+                                    <span style="color: #1a7a3a; font-weight: 600;">
+                                        <i class="fas fa-check-circle"></i> Sí
+                                    </span>
+                                <?php else: ?>
+                                    <span style="color: #922b21; font-weight: 600;">
+                                        <i class="fas fa-times-circle"></i> No
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                         <?php if ($pqrs['relacionada_vh']): ?>
                             <div class="dato-item">
@@ -1101,14 +1100,6 @@ $prioridades = [
                             <div class="dato-item">
                                 <div class="dato-label">Placa</div>
                                 <div class="dato-valor"><?php echo htmlspecialchars($pqrs['placa'] ?? '—'); ?></div>
-                            </div>
-                            <div class="dato-item">
-                                <div class="dato-label">Referencia VH</div>
-                                <div class="dato-valor"><?php echo htmlspecialchars($pqrs['referencia_vh'] ?? '—'); ?></div>
-                            </div>
-                            <div class="dato-item">
-                                <div class="dato-label">Modelo</div>
-                                <div class="dato-valor"><?php echo htmlspecialchars($pqrs['modelo'] ?? '—'); ?></div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -1529,9 +1520,6 @@ $prioridades = [
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
-            // ============================================
-            // OCULTAR MENSAJE FLASH
-            // ============================================
             const mensajeExito = document.getElementById('mensajeExito');
             if (mensajeExito) {
                 setTimeout(() => {
@@ -1541,9 +1529,6 @@ $prioridades = [
                 }, 4000);
             }
 
-            // ============================================
-            // ADJUNTAR ARCHIVO
-            // ============================================
             const btnAdjuntar = document.getElementById('btnAdjuntar');
             const inputArchivo = document.getElementById('inputArchivo');
             const archivoPreview = document.getElementById('archivoPreview');
@@ -1575,9 +1560,6 @@ $prioridades = [
                 archivoPreview.classList.add('visible');
             }
 
-            // ============================================
-            // PASTE DE CAPTURAS
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('paste', function(e) {
                     const items = e.clipboardData.items;
@@ -1597,9 +1579,6 @@ $prioridades = [
                 });
             }
 
-            // ============================================
-            // DRAG & DROP
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.addEventListener('dragover', function(e) {
                     e.preventDefault();
@@ -1624,9 +1603,6 @@ $prioridades = [
                 });
             }
 
-            // ============================================
-            // TOGGLE FECHA LÍMITE
-            // ============================================
             window.toggleFechaInput = function() {
                 const input = document.getElementById('inputFecha');
                 const form = input ? input.closest('form') : null;
@@ -1648,9 +1624,6 @@ $prioridades = [
                 }
             };
 
-            // ============================================
-            // ENVIAR CON ENTER
-            // ============================================
             if (textareaMensaje) {
                 textareaMensaje.keydown = null;
                 textareaMensaje.addEventListener('keydown', function(e) {

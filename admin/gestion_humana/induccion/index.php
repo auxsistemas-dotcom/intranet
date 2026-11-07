@@ -52,19 +52,19 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
     exit();
 }
 
-// ✅ Obtener todas las áreas (tipo 'area')
+// ✅ Obtener todas las áreas (tipo 'area') - ACTIVAS E INACTIVAS
 $stmt = $pdo->query("
     SELECT * FROM categorias_gestion_humana 
-    WHERE tipo = 'area' AND activo = 1
-    ORDER BY orden ASC, nombre ASC
+    WHERE tipo = 'area'
+    ORDER BY activo DESC, orden ASC, nombre ASC
 ");
 $areas_principales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ✅ Obtener todas las carpetas (tipo 'carpeta') con su quiz_url
+// ✅ Obtener todas las carpetas (tipo 'carpeta') con su quiz_url - ACTIVAS E INACTIVAS
 $stmt = $pdo->query("
     SELECT * FROM categorias_gestion_humana 
-    WHERE tipo = 'carpeta' AND activo = 1
-    ORDER BY nombre ASC
+    WHERE tipo = 'carpeta'
+    ORDER BY activo DESC, nombre ASC
 ");
 $todas_carpetas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -196,8 +196,10 @@ $no_areas = empty($areas_principales);
         tr:hover { background: #f8f9fa; }
         
         .area-row { background-color: #f0f7ff; }
+        .area-row.inactiva { background-color: #f5f5f5; opacity: 0.85; }
         .carpeta-row { background-color: #f9f9f9; display: none; }
         .carpeta-row.visible { display: table-row; }
+        .carpeta-row.inactiva { background-color: #f0f0f0; opacity: 0.85; }
         .carpeta-row td:first-child { padding-left: 50px; }
         
         .btn-toggle {
@@ -248,7 +250,6 @@ $no_areas = empty($areas_principales);
             display: inline-block;
         }
         
-        /* ✅ Badge para Quiz */
         .badge-quiz {
             background: #8e44ad;
             color: white;
@@ -322,6 +323,7 @@ $no_areas = empty($areas_principales);
         .fa-rotate-90 { transform: rotate(90deg); }
         .folder-icon { color: #f39c12; margin-right: 5px; }
         .area-icon { color: #173742; margin-right: 5px; }
+        .inactiva-icon { opacity: 0.5; }
     </style>
 </head>
 <body>
@@ -367,7 +369,6 @@ $no_areas = empty($areas_principales);
                 </form>
             </div>
 
-            <!-- ===== FORMULARIO AGREGAR CARPETA ===== -->
             <div class="card form-card">
                 <h2><i class="fas fa-plus-circle"></i> Agregar nueva carpeta</h2>
                 <form action="guardar_carpeta.php" method="POST">
@@ -396,7 +397,6 @@ $no_areas = empty($areas_principales);
                         <textarea name="descripcion" rows="2" placeholder="Descripción de la carpeta"></textarea>
                     </div>
                     
-                    <!-- ✅ CAMPO QUIZ URL (OPCIONAL) -->
                     <div class="form-group">
                         <label><i class="fas fa-link"></i> URL del Quiz <span style="font-weight: 400; color: #7f8c8d; font-size: 12px;">(opcional)</span></label>
                         <input type="url" name="quiz_url" placeholder="https://docs.google.com/forms/d/...">
@@ -439,8 +439,9 @@ $no_areas = empty($areas_principales);
                                 <?php 
                                 $carpetas_aqui = $carpetas_por_padre[$area['id']] ?? [];
                                 $tiene_carpetas = !empty($carpetas_aqui);
+                                $area_activa = (bool) $area['activo'];
                                 ?>
-                                <tr class="area-row" data-area-id="<?php echo $area['id']; ?>">
+                                <tr class="area-row <?php echo !$area_activa ? 'inactiva' : ''; ?>" data-area-id="<?php echo $area['id']; ?>">
                                     <td>
                                         <?php if ($tiene_carpetas): ?>
                                             <button class="btn-toggle" onclick="toggleCarpetas(<?php echo $area['id']; ?>)">
@@ -449,14 +450,15 @@ $no_areas = empty($areas_principales);
                                         <?php else: ?>
                                             <span style="display: inline-block; width: 24px;"></span>
                                         <?php endif; ?>
-                                        <i class="fas fa-folder-open area-icon"></i>
-                                        <strong><?php echo htmlspecialchars($area['nombre']); ?></strong>
+                                        <i class="fas fa-folder-open area-icon <?php echo !$area_activa ? 'inactiva-icon' : ''; ?>"></i>
+                                        <strong class="<?php echo !$area_activa ? 'inactiva-icon' : ''; ?>">
+                                            <?php echo htmlspecialchars($area['nombre']); ?>
+                                        </strong>
                                         <span class="badge-area">Área</span>
                                     </td>
                                     <td><?php echo htmlspecialchars($area['descripcion']); ?></td>
                                     <td>
                                         <?php 
-                                        // Contar carpetas con quiz configurado en esta área
                                         $quiz_count = 0;
                                         foreach ($carpetas_aqui as $c) {
                                             if (!empty($c['quiz_url'])) {
@@ -473,13 +475,15 @@ $no_areas = empty($areas_principales);
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <span class="<?php echo $area['activo'] ? 'badge-activo' : 'badge-inactivo'; ?>">
-                                            <?php echo $area['activo'] ? 'Activo' : 'Inactivo'; ?>
+                                        <span class="<?php echo $area_activa ? 'badge-activo' : 'badge-inactivo'; ?>">
+                                            <?php echo $area_activa ? 'Activo' : 'Inactivo'; ?>
                                         </span>
                                     </td>
                                     <td class="acciones">
-                                        <a href="?cambiar_estado=<?php echo $area['id']; ?>" class="btn-accion btn-estado" title="Cambiar estado">
-                                            <i class="fas fa-toggle-on"></i>
+                                        <a href="?cambiar_estado=<?php echo $area['id']; ?>" 
+                                           class="btn-accion btn-estado" 
+                                           title="<?php echo $area_activa ? 'Desactivar' : 'Activar'; ?>">
+                                            <i class="fas fa-toggle-<?php echo $area_activa ? 'on' : 'off'; ?>"></i>
                                         </a>
                                         <a href="editar_area.php?id=<?php echo $area['id']; ?>" class="btn-accion btn-editar" title="Editar">
                                             <i class="fas fa-edit"></i>
@@ -490,15 +494,17 @@ $no_areas = empty($areas_principales);
                                     </td>
                                 </tr>
                                 
-                                <!-- Carpetas de esta área (ocultas por defecto) -->
                                 <?php if ($tiene_carpetas): ?>
                                     <?php foreach ($carpetas_aqui as $carpeta): ?>
-                                        <tr class="carpeta-row" data-padre="<?php echo $area['id']; ?>">
+                                        <?php $carpeta_activa = (bool) $carpeta['activo']; ?>
+                                        <tr class="carpeta-row <?php echo !$carpeta_activa ? 'inactiva' : ''; ?>" data-padre="<?php echo $area['id']; ?>">
                                             <td>
                                                 <div class="carpeta-indent">
                                                     <i class="fas fa-level-down-alt fa-rotate-90"></i>
-                                                    <i class="fas fa-folder folder-icon"></i>
-                                                    <?php echo htmlspecialchars($carpeta['nombre']); ?>
+                                                    <i class="fas fa-folder folder-icon <?php echo !$carpeta_activa ? 'inactiva-icon' : ''; ?>"></i>
+                                                    <span class="<?php echo !$carpeta_activa ? 'inactiva-icon' : ''; ?>">
+                                                        <?php echo htmlspecialchars($carpeta['nombre']); ?>
+                                                    </span>
                                                     <span class="badge-carpeta">Carpeta</span>
                                                 </div>
                                             </td>
@@ -513,13 +519,15 @@ $no_areas = empty($areas_principales);
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <span class="<?php echo $carpeta['activo'] ? 'badge-activo' : 'badge-inactivo'; ?>">
-                                                    <?php echo $carpeta['activo'] ? 'Activo' : 'Inactivo'; ?>
+                                                <span class="<?php echo $carpeta_activa ? 'badge-activo' : 'badge-inactivo'; ?>">
+                                                    <?php echo $carpeta_activa ? 'Activo' : 'Inactivo'; ?>
                                                 </span>
                                             </td>
                                             <td class="acciones">
-                                                <a href="?cambiar_estado=<?php echo $carpeta['id']; ?>" class="btn-accion btn-estado" title="Cambiar estado">
-                                                    <i class="fas fa-toggle-on"></i>
+                                                <a href="?cambiar_estado=<?php echo $carpeta['id']; ?>" 
+                                                   class="btn-accion btn-estado" 
+                                                   title="<?php echo $carpeta_activa ? 'Desactivar' : 'Activar'; ?>">
+                                                    <i class="fas fa-toggle-<?php echo $carpeta_activa ? 'on' : 'off'; ?>"></i>
                                                 </a>
                                                 <a href="documentos.php?categoria_id=<?php echo $carpeta['id']; ?>" class="btn-accion btn-documentos" title="Ver documentos">
                                                     <i class="fas fa-file-alt"></i>

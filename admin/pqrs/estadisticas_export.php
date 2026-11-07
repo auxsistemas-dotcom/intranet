@@ -30,7 +30,6 @@ if ($rol_usuario != 1 && $rol_usuario != 2) {
 $usuario = obtenerUsuario();
 $nombre_usuario = $usuario['nombre_completo'];
 
-// 🔓 Permitir concatenar chats largos sin cortes (se usa en Timeline si se necesita)
 $pdo->exec("SET SESSION group_concat_max_len = 1000000");
 
 // ============================================
@@ -64,7 +63,7 @@ $prioridades = [
 ];
 
 // ============================================
-// FILTROS (mismos que estadisticas.php)
+// FILTROS
 // ============================================
 $filtro_fecha      = $_GET['fecha']      ?? 'todo';
 $filtro_fecha_desde= $_GET['fecha_desde']?? '';
@@ -159,62 +158,26 @@ $spreadsheet->getProperties()
     ->setSubject('Reporte PQRS')
     ->setDescription('Exportación de estadísticas de PQRS generado automáticamente');
 
-// Estilos comunes
 $estiloHeader = [
-    'font' => [
-        'bold' => true,
-        'color' => ['rgb' => 'FFFFFF'],
-        'size' => 11,
-    ],
-    'fill' => [
-        'fillType' => Fill::FILL_SOLID,
-        'startColor' => ['rgb' => '173742'],
-    ],
-    'alignment' => [
-        'horizontal' => Alignment::HORIZONTAL_CENTER,
-        'vertical' => Alignment::VERTICAL_CENTER,
-    ],
-    'borders' => [
-        'allBorders' => [
-            'borderStyle' => Border::BORDER_THIN,
-            'color' => ['rgb' => 'CCCCCC'],
-        ],
-    ],
+    'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 11],
+    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '173742']],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CCCCCC']]],
 ];
 
 $estiloTitulo = [
-    'font' => [
-        'bold' => true,
-        'size' => 16,
-        'color' => ['rgb' => '12232B'],
-    ],
-    'alignment' => [
-        'horizontal' => Alignment::HORIZONTAL_CENTER,
-        'vertical' => Alignment::VERTICAL_CENTER,
-    ],
+    'font' => ['bold' => true, 'size' => 16, 'color' => ['rgb' => '12232B']],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
 ];
 
 $estiloSubtitulo = [
-    'font' => [
-        'bold' => true,
-        'size' => 12,
-        'color' => ['rgb' => '445960'],
-    ],
-    'alignment' => [
-        'horizontal' => Alignment::HORIZONTAL_CENTER,
-    ],
+    'font' => ['bold' => true, 'size' => 12, 'color' => ['rgb' => '445960']],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
 ];
 
 $estiloCelda = [
-    'alignment' => [
-        'vertical' => Alignment::VERTICAL_CENTER,
-    ],
-    'borders' => [
-        'allBorders' => [
-            'borderStyle' => Border::BORDER_THIN,
-            'color' => ['rgb' => 'E0E0E0'],
-        ],
-    ],
+    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E0E0E0']]],
 ];
 
 // ============================================
@@ -294,7 +257,7 @@ $sheet->getColumnDimension('C')->setWidth(20);
 $sheet->getColumnDimension('D')->setWidth(20);
 
 // ============================================
-// HOJA 2: DETALLE (SIN columna Chat / Timeline)
+// HOJA 2: DETALLE (ajustado al nuevo formulario)
 // ============================================
 $sheet2 = $spreadsheet->createSheet();
 $sheet2->setTitle('Detalle');
@@ -308,12 +271,12 @@ $sql = "SELECT
             p.documento,
             p.email_contacto,
             p.celular,
-            p.ciudad_cliente,
             p.ciudad_concesionario,
             p.marca_vh,
             p.placa,
             p.asunto,
             p.descripcion,
+            p.autoriza_datos,
             u.nombre_completo AS gestor_nombre,
             COALESCE(p.marca_temporal, p.creado_el) AS fecha_creacion,
             p.fecha_cierre,
@@ -328,9 +291,9 @@ $detalle = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $headers = [
     'Código', 'Tipo', 'Estado', 'Prioridad', 'Cliente', 'Documento',
-    'Email', 'Celular', 'Ciudad cliente', 'Ciudad concesionario',
-    'Marca VH', 'Placa', 'Asunto', 'Descripción', 'Gestor principal',
-    'Fecha creación', 'Fecha cierre', 'Duración (días)'
+    'Email', 'Celular', 'Sede de Armotor', 'Marca VH', 'Placa',
+    'Asunto', 'Descripción', 'Autorizó datos',
+    'Gestor principal', 'Fecha creación', 'Fecha cierre', 'Duración (días)'
 ];
 
 $col = 'A';
@@ -351,12 +314,12 @@ foreach ($detalle as $d) {
     $sheet2->setCellValue('F' . $row, $d['documento']);
     $sheet2->setCellValue('G' . $row, $d['email_contacto']);
     $sheet2->setCellValue('H' . $row, $d['celular']);
-    $sheet2->setCellValue('I' . $row, $d['ciudad_cliente']);
-    $sheet2->setCellValue('J' . $row, $d['ciudad_concesionario']);
-    $sheet2->setCellValue('K' . $row, $d['marca_vh']);
-    $sheet2->setCellValue('L' . $row, $d['placa']);
-    $sheet2->setCellValue('M' . $row, $d['asunto']);
-    $sheet2->setCellValue('N' . $row, $d['descripcion']);
+    $sheet2->setCellValue('I' . $row, $d['ciudad_concesionario']);
+    $sheet2->setCellValue('J' . $row, $d['marca_vh']);
+    $sheet2->setCellValue('K' . $row, $d['placa']);
+    $sheet2->setCellValue('L' . $row, $d['asunto']);
+    $sheet2->setCellValue('M' . $row, $d['descripcion']);
+    $sheet2->setCellValue('N' . $row, $d['autoriza_datos'] ? 'Sí' : 'No');
     $sheet2->setCellValue('O' . $row, $d['gestor_nombre'] ?? '—');
     $sheet2->setCellValue('P' . $row, $d['fecha_creacion'] ? date('d/m/Y H:i', strtotime($d['fecha_creacion'])) : '');
     $sheet2->setCellValue('Q' . $row, $d['fecha_cierre'] ? date('d/m/Y H:i', strtotime($d['fecha_cierre'])) : '');
@@ -368,8 +331,8 @@ foreach ($detalle as $d) {
 
 $anchos = [
     'A' => 18, 'B' => 15, 'C' => 20, 'D' => 12, 'E' => 25,
-    'F' => 15, 'G' => 28, 'H' => 15, 'I' => 18, 'J' => 25,
-    'K' => 12, 'L' => 10, 'M' => 35, 'N' => 50, 'O' => 25,
+    'F' => 15, 'G' => 28, 'H' => 15, 'I' => 25, 'J' => 12,
+    'K' => 10, 'L' => 35, 'M' => 50, 'N' => 15, 'O' => 25,
     'P' => 18, 'Q' => 18, 'R' => 15,
 ];
 foreach ($anchos as $c => $w) {
@@ -380,7 +343,7 @@ $sheet2->freezePane('A2');
 $sheet2->setAutoFilter('A1:R' . ($row - 1));
 
 // ============================================
-// HOJA 3: TIMELINE (todos los mensajes / eventos)
+// HOJA 3: TIMELINE
 // ============================================
 $sheet3 = $spreadsheet->createSheet();
 $sheet3->setTitle('Timeline');

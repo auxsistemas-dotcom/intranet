@@ -5,7 +5,7 @@
 /**
  * URL del Web App de Google Apps Script
  */
-$PQRS_API_URL = 'https://script.google.com/macros/s/AKfycbxdcI2JKkOzLKsPI94EyXou9d7RgU1IYDx-L3aitydJbw2gYpovADM1s3C0JjGESfA5bQ/exec';
+$PQRS_API_URL = 'https://script.google.com/macros/s/AKfycby_d5v9r5V17w5-P57d4rR8Y_Gioo5igrLCtfQPr1tN-RAJRGpXvhwtZpEayam3OETnUQ/exec';
 
 /**
  * Token secreto de la API
