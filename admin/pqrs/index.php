@@ -11,13 +11,40 @@ if (!isset($_SESSION['usuario_id'])) {
     exit();
 }
 
-$rol_usuario = $_SESSION['rol'] ?? 3;
-$usuario_id = $_SESSION['usuario_id'];
+$rol_usuario = (int)($_SESSION['rol'] ?? 3);
+$usuario_id  = (int)$_SESSION['usuario_id'];
 
-// Admin y Supervisor: acceso total
-if ($rol_usuario != 1 && $rol_usuario != 2) {
-    $_SESSION['error'] = "❌ No tienes permiso para ver PQRS";
-    header('Location: ../../index.php');
+// ============================================
+// ✅ CONTROL DE ACCESO POR ROL + PERMISO PQRS
+// ============================================
+if ($rol_usuario === 1) {
+    // Admin: acceso total ✅
+
+} elseif ($rol_usuario === 2) {
+    // Supervisor: verificar que tenga permiso de PQRS
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ((int)($permiso['tiene_permiso'] ?? 0) === 0) {
+        // ❌ Supervisor SIN permiso PQRS → al panel principal del admin
+        $_SESSION['error'] = "❌ No tienes permiso para ver PQRS.";
+        header('Location: ../index.php');
+        exit();
+    }
+    // ✅ Supervisor CON permiso PQRS → acceso total
+
+} else {
+    // Rol 3 (usuario normal) → a la vista pública de gestor
+    $_SESSION['error'] = "❌ No tienes permiso para ver PQRS.";
+    header('Location: ../../aplicaciones/otros/pqrs/index.php');
     exit();
 }
 

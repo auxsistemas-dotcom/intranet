@@ -2,6 +2,7 @@
 // includes/pqrs_sync.php
 // Helper para sincronizar PQRS desde la API de Google Apps Script
 // ✅ Sincronizado con el formulario NUEVO de 13 columnas (A → M)
+// ✅ SIN autoriza_datos (el checkbox del Forms no se guarda en BD)
 
 require_once __DIR__ . '/pqrs_api.php';
 require_once __DIR__ . '/pqrs_consecutivos.php';
@@ -56,14 +57,14 @@ function sincronizarPQRS($pdo) {
         LIMIT 1
     ");
 
-    // INSERT alineado con la estructura real de pqrs
+    // INSERT alineado con la estructura real de pqrs (SIN autoriza_datos)
     $stmt_insert = $pdo->prepare("
         INSERT INTO pqrs 
         (codigo, fecha_radicacion, marca_temporal,
          nombre_completo, tipo_documento, documento, celular, email_contacto,
          ciudad_concesionario, tipo_solicitud, marca_vh, placa, relacionada_vh,
-         asunto, descripcion, autoriza_datos, estado, creado_el) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'abierto', NOW())
+         asunto, descripcion, estado, creado_el) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'abierto', NOW())
     ");
 
     // ============================================
@@ -120,10 +121,7 @@ function sincronizarPQRS($pdo) {
             $placa    = trim($item['vehiculo']['placa'] ?? '');
             $relacionada_vh = (!empty($marca_vh) || !empty($placa)) ? 1 : 0;
 
-            // 3.7 Autoriza datos
-            $autoriza_datos = !empty($item['autoriza_datos']) ? 1 : 0;
-
-            // 3.8 INSERT
+            // 3.7 INSERT (SIN autoriza_datos)
             $stmt_insert->execute([
                 $codigo,
                 $fecha_radicacion,
@@ -139,15 +137,14 @@ function sincronizarPQRS($pdo) {
                 $relacionada_vh ? $placa    : null,
                 $relacionada_vh,
                 $item['asunto']                ?? '',
-                $item['descripcion']           ?? '',
-                $autoriza_datos
+                $item['descripcion']           ?? ''
             ]);
 
             $resultado['insertadas']++;
             $resultado['detalles'][] = "✅ $codigo insertada";
 
             // ============================================
-            // 3.9 📧 Enviar correo de radicado al cliente
+            // 3.8 📧 Enviar correo de radicado al cliente
             // ============================================
             $email_contacto = trim($item['email_contacto'] ?? '');
             $nombre_completo = trim($item['nombre_completo'] ?? '');

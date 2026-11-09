@@ -36,7 +36,8 @@ $valores = [
     'modelo' => '',
     'referencia' => '',
     'fecha_matricula' => '',
-    'tipo' => ''
+    'tipo' => '',
+    'kilometraje' => 0
 ];
 
 if (isset($_SESSION['vehiculo_temp'])) {
@@ -46,13 +47,14 @@ if (isset($_SESSION['vehiculo_temp'])) {
     $valores['referencia'] = $_SESSION['vehiculo_temp']['referencia'] ?? '';
     $valores['fecha_matricula'] = $_SESSION['vehiculo_temp']['fecha_matricula'] ?? '';
     $valores['tipo'] = $_SESSION['vehiculo_temp']['tipo'] ?? '';
+    $valores['kilometraje'] = $_SESSION['vehiculo_temp']['kilometraje'] ?? 0;
 }
 
 // ============================================
 // ✅ PROCESAR FORMULARIO
 // ============================================
 $error = '';
-$tipos_validos = ['NUEVO', 'TEST_DRIVE', 'USADO'];
+$tipos_validos = ['NUEVO', 'TEST_DRIVE', 'USADO', 'PROPIO'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Recoger datos - TODOS los campos de texto en MAYÚSCULAS
@@ -62,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $valores['referencia'] = strtoupper(trim($_POST['referencia'] ?? ''));
     $valores['fecha_matricula'] = trim($_POST['fecha_matricula'] ?? '');
     $valores['tipo'] = strtoupper(trim($_POST['tipo'] ?? ''));
+    $valores['kilometraje'] = isset($_POST['kilometraje']) ? intval($_POST['kilometraje']) : 0;
     
     // ✅ VALIDACIONES
     if (empty($valores['placa']) || empty($valores['marca']) || empty($valores['modelo']) || 
@@ -80,6 +83,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     elseif (strtotime($valores['fecha_matricula']) > time()) {
         $error = "❌ La fecha de matrícula no puede ser futura";
     }
+    // ✅ VALIDAR KILOMETRAJE
+    elseif ($valores['kilometraje'] < 0) {
+        $error = "❌ El kilometraje no puede ser negativo";
+    }
+    // ✅ Si es NUEVO, el KM debe ser 0
+    elseif ($valores['tipo'] === 'NUEVO' && $valores['kilometraje'] !== 0) {
+        $error = "❌ Un vehículo NUEVO debe tener kilometraje 0";
+    }
+    // ✅ Si es TEST_DRIVE, USADO o PROPIO, el KM debe ser mayor a 0
+    elseif (in_array($valores['tipo'], ['TEST_DRIVE', 'USADO', 'PROPIO']) && $valores['kilometraje'] <= 0) {
+        $error = "❌ Un vehículo " . $valores['tipo'] . " debe tener kilometraje mayor a 0";
+    }
     else {
         // Verificar que NO exista ya en BD
         $stmt = $pdo->prepare("SELECT id FROM ope_vehiculos WHERE placa = ?");
@@ -88,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->fetch()) {
             $error = "❌ Ya existe un vehículo con la placa {$valores['placa']}";
         } else {
-            // ✅ PRESERVAR documentos_temp si ya existían (cuando vuelve de "Cancelar" en documentos.php)
+            // ✅ PRESERVAR documentos_temp si ya existían
             $documentos_existentes = $_SESSION['vehiculo_temp']['documentos_temp'] ?? [];
             
             // ✅ GUARDAR EN SESIÓN TEMPORAL
@@ -99,8 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'referencia' => $valores['referencia'],
                 'fecha_matricula' => $valores['fecha_matricula'],
                 'tipo' => $valores['tipo'],
+                'kilometraje' => $valores['kilometraje'],
                 'añadido_por' => $_SESSION['usuario_id'],
-                'documentos_temp' => $documentos_existentes   // ← Se mantienen si ya existían
+                'documentos_temp' => $documentos_existentes
             ];
             
             // Redirigir a documentos
@@ -134,7 +150,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 20px 40px;
         }
         
-        /* ========== HEADER ========== */
         .header {
             background: #12232b;
             margin-bottom: 30px;
@@ -174,7 +189,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: translateY(-2px);
         }
         
-        /* ========== CARD ========== */
         .card {
             background: white;
             border-radius: 12px;
@@ -204,7 +218,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 5px;
         }
         
-        /* ========== AVISO SESIÓN EXISTENTE ========== */
         .aviso-sesion {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -218,12 +231,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             gap: 10px;
         }
         
-        .aviso-sesion i {
-            color: #3498db;
-            font-size: 16px;
-        }
+        .aviso-sesion i { color: #3498db; font-size: 16px; }
         
-        /* ========== MENSAJES ========== */
         .mensaje-error {
             background: #fadbd8;
             color: #922b21;
@@ -237,7 +246,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             gap: 10px;
         }
         
-        /* ========== FORMULARIO ========== */
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -291,13 +299,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #b0b0b0;
         }
         
+        .form-campo input:disabled {
+            background: #f0f0f0;
+            color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
         .form-campo small {
             font-size: 11px;
             color: #95a5a6;
             margin-top: -4px;
         }
         
-        /* ========== BOTONES ========== */
+        .form-campo .aviso-km {
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 4px;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .form-campo .aviso-km.visible {
+            display: flex;
+        }
+        
+        .form-campo .aviso-km.info {
+            background: #e8f4f8;
+            color: #1a5276;
+            border-left: 3px solid #3498db;
+        }
+        
+        .form-campo .aviso-km.warning {
+            background: #fef9e7;
+            color: #7f6000;
+            border-left: 3px solid #f39c12;
+        }
+        
         .form-acciones {
             display: flex;
             justify-content: flex-end;
@@ -345,7 +384,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 
-<!-- ========== HEADER ========== -->
 <header class="header">
     <div class="container">
         <div class="logo">
@@ -358,7 +396,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </header>
 
-<!-- ========== CONTENIDO ========== -->
 <div class="container">
     
     <div class="card">
@@ -370,7 +407,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p>Completa los datos del vehículo. En el siguiente paso agregarás SOAT y Tecnomecánica.</p>
         </div>
         
-        <!-- Aviso si vienes de "Cancelar" en documentos.php -->
         <?php if (isset($_SESSION['vehiculo_temp']) && !empty($_SESSION['vehiculo_temp']['placa'])): ?>
             <div class="aviso-sesion">
                 <i class="fas fa-info-circle"></i>
@@ -393,7 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php endif; ?>
         
-        <form method="POST" action="">
+        <form method="POST" action="" id="formVehiculo">
             <div class="form-grid">
                 
                 <div class="form-campo">
@@ -414,7 +450,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <div class="form-campo">
                     <label for="tipo">Tipo <span class="obligatorio">*</span></label>
-                    <select name="tipo" id="tipo" required>
+                    <select name="tipo" id="tipo" required onchange="actualizarKilometraje()">
                         <option value="">Selecciona...</option>
                         <option value="NUEVO" <?php echo $valores['tipo'] === 'NUEVO' ? 'selected' : ''; ?>>
                             🆕 NUEVO
@@ -424,6 +460,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </option>
                         <option value="USADO" <?php echo $valores['tipo'] === 'USADO' ? 'selected' : ''; ?>>
                             🔄 USADO
+                        </option>
+                        <option value="PROPIO" <?php echo $valores['tipo'] === 'PROPIO' ? 'selected' : ''; ?>>
+                            👤 PROPIO (empleado)
                         </option>
                     </select>
                 </div>
@@ -470,6 +509,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     >
                 </div>
                 
+                <div class="form-campo">
+                    <label for="kilometraje">Kilometraje (km) <span class="obligatorio">*</span></label>
+                    <input 
+                        type="number" 
+                        name="kilometraje" 
+                        id="kilometraje" 
+                        placeholder="0"
+                        value="<?php echo htmlspecialchars($valores['kilometraje']); ?>"
+                        required
+                        min="0"
+                        max="9999999"
+                        step="1"
+                    >
+                    <div class="aviso-km" id="avisoKm"></div>
+                </div>
+                
                 <div class="form-campo full-width">
                     <label for="fecha_matricula">Fecha de matrícula <span class="obligatorio">*</span></label>
                     <input 
@@ -497,6 +552,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
     </div>
 </div>
+
+<script>
+    // ============================================
+    // ACTUALIZAR EL CAMPO KILOMETRAJE SEGÚN EL TIPO
+    // ============================================
+    function actualizarKilometraje() {
+        const tipo = document.getElementById('tipo').value;
+        const kmInput = document.getElementById('kilometraje');
+        const aviso = document.getElementById('avisoKm');
+        
+        // Resetear clases
+        aviso.classList.remove('visible', 'info', 'warning');
+        aviso.innerHTML = '';
+        
+        if (tipo === 'NUEVO') {
+            // KM debe ser 0
+            kmInput.value = 0;
+            kmInput.disabled = true;
+            aviso.innerHTML = '<i class="fas fa-info-circle"></i> Un vehículo NUEVO debe tener kilometraje 0';
+            aviso.classList.add('visible', 'info');
+        } 
+        else if (tipo === 'TEST_DRIVE' || tipo === 'USADO' || tipo === 'PROPIO') {
+            // KM debe ser > 0
+            kmInput.disabled = false;
+            if (kmInput.value == 0 || kmInput.value === '') {
+                kmInput.value = '';
+            }
+            aviso.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Debes ingresar el kilometraje actual del vehículo (mayor a 0)';
+            aviso.classList.add('visible', 'warning');
+        } 
+        else {
+            // Sin tipo seleccionado
+            kmInput.disabled = false;
+        }
+    }
+    
+    // ============================================
+    // VALIDACIÓN AL ENVIAR EL FORMULARIO
+    // ============================================
+    document.getElementById('formVehiculo').addEventListener('submit', function(e) {
+        const tipo = document.getElementById('tipo').value;
+        const km = parseInt(document.getElementById('kilometraje').value) || 0;
+        
+        if (tipo === 'NUEVO' && km !== 0) {
+            e.preventDefault();
+            alert('❌ Un vehículo NUEVO debe tener kilometraje 0');
+            return false;
+        }
+        
+        if ((tipo === 'TEST_DRIVE' || tipo === 'USADO' || tipo === 'PROPIO') && km <= 0) {
+            e.preventDefault();
+            alert('❌ Un vehículo ' + tipo + ' debe tener kilometraje mayor a 0');
+            return false;
+        }
+    });
+    
+    // ============================================
+    // INICIALIZAR AL CARGAR LA PÁGINA
+    // ============================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Si ya hay un tipo seleccionado (al volver de "Cancelar"), aplicar lógica
+        if (document.getElementById('tipo').value) {
+            actualizarKilometraje();
+            // Restaurar el valor de KM que venía de la sesión
+            <?php if (!empty($valores['kilometraje'])): ?>
+                document.getElementById('kilometraje').value = <?php echo intval($valores['kilometraje']); ?>;
+            <?php endif; ?>
+        }
+    });
+</script>
 
 </body>
 </html>

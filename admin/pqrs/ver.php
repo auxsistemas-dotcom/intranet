@@ -14,17 +14,40 @@ if (!isset($_SESSION['usuario_id'])) {
     exit();
 }
 
-$rol_usuario = $_SESSION['rol'] ?? 3;
-$usuario_id  = $_SESSION['usuario_id'];
+$rol_usuario = (int)($_SESSION['rol'] ?? 3);
+$usuario_id  = (int)$_SESSION['usuario_id'];
 
-if ($rol_usuario != 1 && $rol_usuario != 2) {
-    if ($rol_usuario == 3) {
-        $id_redir = intval($_GET['id'] ?? 0);
-        header('Location: ../../../aplicaciones/otros/pqrs/ver.php?id=' . $id_redir);
+// ============================================
+// ✅ CONTROL DE ACCESO POR ROL + PERMISO PQRS
+// ============================================
+if ($rol_usuario === 1) {
+    // Admin: acceso total ✅
+
+} elseif ($rol_usuario === 2) {
+    // Supervisor: verificar que tenga permiso de PQRS
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ((int)($permiso['tiene_permiso'] ?? 0) === 0) {
+        // ❌ Supervisor SIN permiso PQRS → fuera
+        $_SESSION['error'] = "❌ No tienes permiso para ver esta PQRS.";
+        header('Location: ../../aplicaciones/otros/pqrs/index.php');
         exit();
     }
-    $_SESSION['error'] = "❌ No tienes permiso para ver esta PQRS";
-    header('Location: ../../index.php');
+    // ✅ Supervisor CON permiso PQRS → acceso total
+
+} else {
+    // Rol 3 (usuario normal) → redirigir a la vista pública de su PQRS
+    $id_redir = intval($_GET['id'] ?? 0);
+    header('Location: ../../aplicaciones/otros/pqrs/ver.php?id=' . $id_redir);
     exit();
 }
 
@@ -281,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // ----------------------------------------
-        // AGREGAR GESTOR SECUNDARIO
+        // AGREGAR GESTOR SECUNDARIO (COLABORADOR)
         // ----------------------------------------
         elseif ($action === 'agregar_gestor') {
             $nuevo_gestor_id = intval($_POST['gestor_id'] ?? 0);
@@ -292,7 +315,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['error'] = "❌ Ese usuario ya es el gestor principal";
             } else {
                 $stmt = $pdo->prepare("
-                    SELECT u.id, u.nombre_completo 
+                    SELECT u.id, u.nombre_completo, u.email 
                     FROM usuarios u
                     INNER JOIN pqrs_gestores_usuarios gu ON gu.usuario_id = u.id AND gu.activo = 1
                     WHERE u.id = ? AND u.activo = 1
@@ -314,6 +337,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->execute([$pqrs_id, $nuevo_gestor_id, $usuario_id]);
                         
                         registrarEventoSistema($pdo, $pqrs_id, $usuario_id, 'agregar_gestor', null, $nuevo_gestor['nombre_completo']);
+                        
+                        // ✅ NUEVO: enviar notificación por correo al colaborador
+                        if (!empty($nuevo_gestor['email'])) {
+                            enviarNotificacionColaboradorPQRS(
+                                $nuevo_gestor['email'],
+                                $nuevo_gestor['nombre_completo'],
+                                $pqrs,
+                                $nombre_usuario
+                            );
+                        } else {
+                            error_log("⚠️ Colaborador {$nuevo_gestor['nombre_completo']} (id {$nuevo_gestor_id}) sin email registrado, no se pudo notificar la colaboración de la PQRS {$pqrs['codigo']}");
+                        }
                         
                         $_SESSION['mensaje'] = "✅ Gestor añadido: " . $nuevo_gestor['nombre_completo'];
                     }
@@ -662,7 +697,6 @@ $prioridades = [
         body { font-family: 'Poppins', sans-serif; background: #d3d3d3; color: #2c3e50; }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
-        /* ===== HEADER ===== */
         .header { background: #12232b; margin-bottom: 30px; border-bottom: 3px solid #173742; }
         .header .container { display: flex; justify-content: space-between; align-items: center; }
         .logo img { width: 130px; }
@@ -674,7 +708,6 @@ $prioridades = [
         }
         .btn-volver:hover { background: #ffc107; color: #12232b; transform: translateY(-2px); }
 
-        /* ===== MENSAJES FLASH ===== */
         .mensaje-exito, .mensaje-error {
             padding: 12px 18px; border-radius: 8px; margin-bottom: 20px;
             display: flex; align-items: center; gap: 10px; font-size: 14px;
@@ -682,7 +715,6 @@ $prioridades = [
         .mensaje-exito { background: #d4edda; color: #155724; border-left: 4px solid #27ae60; }
         .mensaje-error { background: #f8d7da; color: #721c24; border-left: 4px solid #e74c3c; }
 
-        /* ===== AVISO BLOQUEADO ===== */
         .aviso-bloqueado {
             background: linear-gradient(135deg, #e8f8f5, #d5f5e3);
             border: 2px solid #27ae60; border-left: 6px solid #1e8449;
@@ -694,7 +726,6 @@ $prioridades = [
         .aviso-bloqueado strong { font-size: 15px; color: #1a7a3a; display: block; margin-bottom: 3px; }
         .aviso-bloqueado p { font-size: 13px; color: #196f3d; margin: 0; }
 
-        /* ===== LAYOUT ===== */
         .pqrs-header-card {
             background: white; border-radius: 16px; padding: 20px 25px;
             margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.08);
@@ -718,7 +749,6 @@ $prioridades = [
 
         .pqrs-header-badges { display: flex; gap: 10px; flex-wrap: wrap; }
 
-        /* ===== BADGES ===== */
         .badge-estado {
             padding: 6px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;
             display: inline-flex; align-items: center; gap: 6px;
@@ -736,14 +766,12 @@ $prioridades = [
         .prio-media { background: #fef9e7; color: #7f6000; border: 1px solid #f39c12; }
         .prio-baja { background: #eafaf1; color: #196f3d; border: 1px solid #27ae60; }
 
-        /* ===== GRID ===== */
         .pqrs-grid {
             display: grid; grid-template-columns: 1fr 380px;
             gap: 20px; margin-bottom: 20px;
         }
         @media (max-width: 1024px) { .pqrs-grid { grid-template-columns: 1fr; } }
 
-        /* ===== CARDS ===== */
         .card {
             background: white; border-radius: 16px; padding: 22px;
             box-shadow: 0 2px 15px rgba(0,0,0,0.08); margin-bottom: 20px;
@@ -755,7 +783,6 @@ $prioridades = [
         }
         .card h3 i { color: #e67e22; font-size: 14px; }
 
-        /* ===== DATOS ===== */
         .datos-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 12px;
@@ -777,7 +804,6 @@ $prioridades = [
             white-space: pre-wrap; max-height: 300px; overflow-y: auto;
         }
 
-        /* ===== ACCIONES ===== */
         .acciones-seccion { display: flex; flex-direction: column; gap: 12px; }
         .accion-grupo {
             padding: 12px; background: #f8f9fa; border-radius: 10px;
@@ -820,7 +846,6 @@ $prioridades = [
         }
         .btn-reabrir:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(39,174,96,0.5); }
 
-        /* ===== GESTORES ===== */
         .gestores-lista { display: flex; flex-direction: column; gap: 8px; }
         .gestor-card {
             display: flex; align-items: center; gap: 10px;
@@ -847,7 +872,6 @@ $prioridades = [
         }
         .btn-remove-mini:hover { background: #fadbd8; }
 
-        /* ===== TIMELINE ===== */
         .timeline {
             display: flex; flex-direction: column; gap: 12px;
             max-height: 600px; overflow-y: auto; padding-right: 8px;
@@ -903,7 +927,6 @@ $prioridades = [
         .timeline-adjunto-pdf:hover { border-color: #e74c3c; background: #fef5f5; }
         .timeline-adjunto-pdf i { color: #e74c3c; font-size: 18px; }
 
-        /* ===== FORM RESPUESTA ===== */
         .form-respuesta {
             margin-top: 15px; padding: 15px; background: #f8f9fa;
             border-radius: 10px; border: 1px solid #e9ecef;
@@ -939,11 +962,9 @@ $prioridades = [
         }
         .btn-adjuntar:hover { background: #d5dbdb; }
 
-        /* ===== INFO VACÍA ===== */
         .empty-info { text-align: center; padding: 25px 15px; color: #7f8c8d; font-size: 13px; }
         .empty-info i { font-size: 32px; color: #d3d3d3; display: block; margin-bottom: 8px; }
 
-        /* ===== BADGE FECHA ===== */
         .badge-fecha {
             padding: 6px 12px; border-radius: 20px; font-size: 11px;
             font-weight: 600; display: inline-flex; align-items: center;
@@ -962,7 +983,6 @@ $prioridades = [
             50% { transform: scale(1.05); }
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .header .container { flex-direction: column; gap: 15px; text-align: center; }
             .pqrs-header-card { flex-direction: column; align-items: flex-start; }
@@ -1045,9 +1065,7 @@ $prioridades = [
 
         <div class="pqrs-grid">
 
-            <!-- ===== COLUMNA IZQUIERDA: DATOS ===== -->
             <div>
-                <!-- DATOS DEL CLIENTE (adaptado al nuevo formulario) -->
                 <div class="card">
                     <h3><i class="fas fa-user"></i> Datos del cliente</h3>
                     <div class="datos-grid">
@@ -1078,20 +1096,6 @@ $prioridades = [
                             <div class="dato-label">Relacionada con VH</div>
                             <div class="dato-valor"><?php echo $pqrs['relacionada_vh'] ? 'Sí' : 'No'; ?></div>
                         </div>
-                        <div class="dato-item">
-                            <div class="dato-label">Autorizó tratamiento de datos</div>
-                            <div class="dato-valor">
-                                <?php if (!empty($pqrs['autoriza_datos'])): ?>
-                                    <span style="color: #1a7a3a; font-weight: 600;">
-                                        <i class="fas fa-check-circle"></i> Sí
-                                    </span>
-                                <?php else: ?>
-                                    <span style="color: #922b21; font-weight: 600;">
-                                        <i class="fas fa-times-circle"></i> No
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
                         <?php if ($pqrs['relacionada_vh']): ?>
                             <div class="dato-item">
                                 <div class="dato-label">Marca VH</div>
@@ -1105,13 +1109,11 @@ $prioridades = [
                     </div>
                 </div>
 
-                <!-- DESCRIPCIÓN -->
                 <div class="card">
                     <h3><i class="fas fa-align-left"></i> Descripción del caso</h3>
                     <div class="descripcion-box"><?php echo htmlspecialchars($pqrs['descripcion'] ?? 'Sin descripción'); ?></div>
                 </div>
 
-                <!-- TIMELINE -->
                 <div class="card">
                     <h3>
                         <i class="fas fa-comments"></i>
@@ -1198,7 +1200,6 @@ $prioridades = [
                         </div>
                     <?php endif; ?>
 
-                    <!-- FORM RESPUESTA -->
                     <?php if ($puede_comentar): ?>
                         <form method="POST" action="" class="form-respuesta" enctype="multipart/form-data" id="formComentario">
                             <input type="hidden" name="action" value="comentar">
@@ -1242,10 +1243,8 @@ $prioridades = [
                 </div>
             </div>
 
-            <!-- ===== COLUMNA DERECHA: ACCIONES ===== -->
             <div>
 
-                <!-- GESTORES ASIGNADOS -->
                 <div class="card">
                     <h3><i class="fas fa-users"></i> Gestores asignados</h3>
                     
@@ -1289,7 +1288,6 @@ $prioridades = [
                     <?php endif; ?>
                 </div>
 
-                <!-- ACCIONES -->
                 <div class="card">
                     <h3><i class="fas fa-cog"></i> Acciones</h3>
                     <div class="acciones-seccion">
@@ -1313,7 +1311,6 @@ $prioridades = [
 
                         <?php else: ?>
 
-                            <!-- CAMBIAR ESTADO -->
                             <div class="accion-grupo">
                                 <label>Cambiar estado</label>
                                 <form method="POST" style="display: flex; gap: 6px;">
@@ -1331,7 +1328,6 @@ $prioridades = [
                                 </form>
                             </div>
 
-                            <!-- CAMBIAR PRIORIDAD -->
                             <div class="accion-grupo">
                                 <label>Cambiar prioridad</label>
                                 <form method="POST" style="display: flex; gap: 6px;">
@@ -1349,7 +1345,6 @@ $prioridades = [
                                 </form>
                             </div>
 
-                            <!-- ASIGNAR GESTOR PRINCIPAL -->
                             <div class="accion-grupo">
                                 <label>Gestor principal</label>
                                 <form method="POST" style="display: flex; gap: 6px;">
@@ -1368,7 +1363,6 @@ $prioridades = [
                                 </form>
                             </div>
 
-                            <!-- AÑADIR GESTOR SECUNDARIO -->
                             <?php 
                             $ids_asignados = array_column($gestores_asignados, 'id');
                             $gestores_para_agregar = array_filter($gestores_disponibles, function($g) use ($ids_asignados) {
@@ -1395,7 +1389,6 @@ $prioridades = [
                                 </div>
                             <?php endif; ?>
 
-                            <!-- FECHA LÍMITE -->
                             <div class="accion-grupo">
                                 <label><i class="fas fa-clock"></i> Fecha límite</label>
                                 
@@ -1438,7 +1431,6 @@ $prioridades = [
                                 </form>
                             </div>
 
-                            <!-- BOTÓN DEVOLVER A PROCESO -->
                             <?php if ($pqrs['estado'] === 'analisis_servicio_cliente' && $pqrs['fecha_limite']): ?>
                                 <div class="accion-grupo" style="background: #fef9e7; border-color: #f39c12;">
                                     <label><i class="fas fa-undo"></i> Devolver a proceso</label>
@@ -1470,7 +1462,6 @@ $prioridades = [
                                 </div>
                             <?php endif; ?>
 
-                            <!-- CERRAR PQRS -->
                             <form method="POST" onsubmit="return confirm('¿Cerrar esta PQRS? Una vez cerrada no podrás editarla sin reabrirla.');">
                                 <input type="hidden" name="action" value="cerrar">
                                 <button type="submit" class="btn btn-success">
@@ -1483,7 +1474,6 @@ $prioridades = [
                     </div>
                 </div>
 
-                <!-- INFO EXTRA -->
                 <div class="card">
                     <h3><i class="fas fa-info-circle"></i> Información</h3>
                     <div class="datos-grid" style="grid-template-columns: 1fr;">

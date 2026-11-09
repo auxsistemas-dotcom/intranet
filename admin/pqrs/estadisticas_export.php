@@ -21,9 +21,36 @@ if (!isset($_SESSION['usuario_id'])) {
 $rol_usuario = $_SESSION['rol'] ?? 3;
 $usuario_id = $_SESSION['usuario_id'];
 
-if ($rol_usuario != 1 && $rol_usuario != 2) {
-    $_SESSION['error'] = "❌ No tienes permiso para exportar estadísticas";
-    header('Location: ../../index.php');
+// ============================================
+// ✅ CONTROL DE ACCESO POR ROL + PERMISO PQRS
+// ============================================
+if ($rol_usuario == 1) {
+    // Admin: acceso total ✅
+    
+} elseif ($rol_usuario == 2) {
+    // Supervisor: verificar que tenga permiso de PQRS
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (empty($permiso['tiene_permiso'])) {
+        // ❌ Supervisor SIN permiso PQRS → vista de gestor
+        $_SESSION['error'] = "❌ No tienes permiso de supervisor para exportar estadísticas de PQRS.";
+        header('Location: ../../aplicaciones/otros/pqrs/index.php');
+        exit();
+    }
+    // ✅ Supervisor CON permiso PQRS → acceso total
+    
+} else {
+    // Usuario normal (rol 3) → vista de gestor
+    header('Location: ../../aplicaciones/otros/pqrs/index.php');
     exit();
 }
 
@@ -257,7 +284,7 @@ $sheet->getColumnDimension('C')->setWidth(20);
 $sheet->getColumnDimension('D')->setWidth(20);
 
 // ============================================
-// HOJA 2: DETALLE (ajustado al nuevo formulario)
+// HOJA 2: DETALLE
 // ============================================
 $sheet2 = $spreadsheet->createSheet();
 $sheet2->setTitle('Detalle');

@@ -48,9 +48,6 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
     $url_base = $protocolo . $_SERVER['HTTP_HOST'] . '/';
     
-    // ============================================
-    // MENSAJE HTML
-    // ============================================
     $mensaje_html = '
     <!DOCTYPE html>
     <html>
@@ -164,9 +161,6 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     </body>
     </html>';
     
-    // ============================================
-    // MENSAJE TEXTO PLANO
-    // ============================================
     $mensaje_texto = "Solicitud de Permiso - AR Motor\n";
     $mensaje_texto .= "================================\n\n";
     $mensaje_texto .= "Hola " . $destinatario_nombre . ",\n\n";
@@ -199,15 +193,6 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
 // ============================================
 // CORREO: RADICADO DE PQRS (CREACIÓN)
 // ============================================
-/**
- * Envía el correo de radicado al usuario que creó la PQRS.
- * 
- * @param string $email_contacto Email del destinatario
- * @param string $nombre_completo Nombre del destinatario
- * @param string $codigo Código de radicado (ej: PQRS-2026-00047)
- * @param array $datos_pqrs Datos completos de la PQRS
- * @return bool
- */
 function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $datos_pqrs) {
     
     if (empty($email_contacto)) {
@@ -223,7 +208,6 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
     $descripcion = $datos_pqrs['descripcion'] ?? '';
     $fecha_radicacion = $datos_pqrs['fecha_radicacion'] ?? date('Y-m-d');
     
-    // Tipos legibles
     $tipos = [
         'PETICION'     => 'Petición',
         'QUEJA'        => 'Queja',
@@ -233,9 +217,6 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
     ];
     $tipo_legible = $tipos[$tipo_solicitud] ?? $tipo_solicitud;
     
-    // ============================================
-    // MENSAJE HTML
-    // ============================================
     $mensaje_html = '
     <!DOCTYPE html>
     <html>
@@ -269,7 +250,7 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
             <div class="content">
                 <p>Hola <strong>' . htmlspecialchars($nombre_completo) . '</strong>,</p>
                 
-                <p>Hemos recibido tu PQRS correctamente. A continuación encontrarás el número de radicado con el cual podrás hacer seguimiento:</p>
+                <p>Hemos recibido tu PQRSF correctamente. A continuación encontrarás el número de radicado con el cual podrás hacer seguimiento:</p>
                 
                 <div class="radicado-box">
                     <div class="radicado-label">Número de Radicado</div>
@@ -319,13 +300,10 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
     </body>
     </html>';
     
-    // ============================================
-    // MENSAJE TEXTO PLANO
-    // ============================================
     $mensaje_texto = "PQRS Recibida - ARMOTOR\n";
     $mensaje_texto .= "================================\n\n";
     $mensaje_texto .= "Hola " . $nombre_completo . ",\n\n";
-    $mensaje_texto .= "Hemos recibido tu PQRS correctamente.\n\n";
+    $mensaje_texto .= "Hemos recibido tu PQRSF correctamente.\n\n";
     $mensaje_texto .= "NÚMERO DE RADICADO: " . $codigo . "\n\n";
     $mensaje_texto .= "Detalles:\n";
     $mensaje_texto .= "- Tipo: " . $tipo_legible . "\n";
@@ -344,15 +322,6 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
 // ============================================
 // CORREO: ASIGNACIÓN DE PQRS A UN GESTOR
 // ============================================
-/**
- * Notifica por correo al gestor cuando se le asigna una PQRS.
- *
- * @param string $email_gestor     Email del gestor asignado
- * @param string $nombre_gestor    Nombre completo del gestor
- * @param array  $datos_pqrs       Datos completos de la PQRS
- * @param string $asignado_por     Nombre de quien asigna (opcional)
- * @return bool
- */
 function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_pqrs, $asignado_por = '') {
 
     if (empty($email_gestor)) {
@@ -370,7 +339,6 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
     $fecha_radica  = $datos_pqrs['fecha_radicacion']  ?? $datos_pqrs['marca_temporal'] ?? date('Y-m-d');
     $pqrs_id       = $datos_pqrs['id']                ?? 0;
 
-    // Tipo legible
     $tipos = [
         'PETICION'     => 'Petición',
         'QUEJA'        => 'Queja',
@@ -380,9 +348,6 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
     ];
     $tipo_legible = $tipos[$tipo] ?? $tipo;
 
-    // ============================================
-    // MENSAJE HTML
-    // ============================================
     $mensaje_html = '
     <!DOCTYPE html>
     <html>
@@ -471,9 +436,6 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
     </body>
     </html>';
 
-    // ============================================
-    // MENSAJE TEXTO PLANO
-    // ============================================
     $mensaje_texto  = "Nueva PQRS Asignada - ARMOTOR\n";
     $mensaje_texto .= "================================\n\n";
     $mensaje_texto .= "Hola " . $nombre_gestor . ",\n\n";
@@ -493,5 +455,194 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
     $asunto_email = "📥 Nueva PQRS asignada: " . $codigo . " - ARMOTOR";
 
     return enviarCorreo($email_gestor, $asunto_email, $mensaje_html, $mensaje_texto);
+}
+
+// ============================================
+// CORREO: COLABORADOR AÑADIDO A UNA PQRS
+// ============================================
+/**
+ * Notifica por correo a un colaborador que fue añadido a una PQRS.
+ *
+ * @param string $email_colaborador   Email del colaborador
+ * @param string $nombre_colaborador  Nombre del colaborador
+ * @param array  $datos_pqrs          Datos de la PQRS
+ * @param string $nombre_principal    Nombre de quien lo añadió (opcional)
+ * @return bool
+ */
+function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborador, $datos_pqrs, $nombre_principal = '') {
+
+    if (empty($email_colaborador)) {
+        error_log("⚠️ No se envía correo de colaborador PQRS: email vacío para " . ($nombre_colaborador ?: 'desconocido'));
+        return false;
+    }
+
+    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $url_base  = $protocolo . ($_SERVER['HTTP_HOST'] ?? 'intranet2.armotor.com') . '/';
+
+    $codigo        = $datos_pqrs['codigo']            ?? '';
+    $tipo          = $datos_pqrs['tipo_solicitud']    ?? '';
+    $asunto        = $datos_pqrs['asunto']            ?? '';
+    $descripcion   = $datos_pqrs['descripcion']       ?? '';
+    $fecha_radica  = $datos_pqrs['fecha_radicacion']  ?? $datos_pqrs['marca_temporal'] ?? date('Y-m-d');
+    $pqrs_id       = $datos_pqrs['id']                ?? 0;
+    $estado        = $datos_pqrs['estado']            ?? 'abierto';
+    $prioridad     = $datos_pqrs['prioridad']         ?? 'media';
+    $cliente       = $datos_pqrs['nombre_completo']   ?? '';
+    $marca_vh      = $datos_pqrs['marca_vh']          ?? '';
+    $placa         = $datos_pqrs['placa']             ?? '';
+
+    $tipos = [
+        'PETICION'     => 'Petición',
+        'QUEJA'        => 'Queja',
+        'RECLAMO'      => 'Reclamo',
+        'SUGERENCIA'   => 'Sugerencia',
+        'FELICITACION' => 'Felicitación'
+    ];
+    $tipo_legible = $tipos[$tipo] ?? $tipo;
+
+    $estados = [
+        'abierto'                   => 'Abierto',
+        'en_proceso'                => 'En Proceso',
+        'analisis_servicio_cliente' => 'Análisis Serv. Cliente',
+        'cerrado'                   => 'Cerrado'
+    ];
+    $estado_legible = $estados[$estado] ?? $estado;
+
+    $prioridades = ['alta' => 'Alta', 'media' => 'Media', 'baja' => 'Baja'];
+    $prioridad_legible = $prioridades[$prioridad] ?? $prioridad;
+
+    $mensaje_html = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial, sans-serif; color: #2c3e50; line-height: 1.6; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+            .header { background: linear-gradient(135deg, #12232b, #173742); padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .header h1 { color: #ffc107; margin: 0; font-size: 22px; }
+            .header p { color: #8aa8b8; margin: 8px 0 0; font-size: 13px; }
+            .content { background: white; padding: 30px 25px; border-radius: 0 0 10px 10px; }
+            .radicado-box { background: #e8f4f8; border: 2px solid #3498db; border-radius: 10px; padding: 18px; text-align: center; margin: 20px 0; }
+            .radicado-label { font-size: 11px; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 6px; }
+            .radicado-codigo { font-size: 24px; font-weight: 800; color: #2980b9; letter-spacing: 1.5px; margin: 0; }
+            .detalle { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; }
+            .detalle-item { padding: 10px 0; border-bottom: 1px solid #e9ecef; }
+            .detalle-item:last-child { border-bottom: none; }
+            .detalle-item .label { font-weight: 600; color: #7f8c8d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .detalle-item .value { font-size: 15px; color: #12232b; margin-top: 3px; }
+            .btn { display: inline-block; padding: 12px 28px; background: #173742; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; }
+            .footer { text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e9ecef; }
+            .banner-info { background: #fef9e7; border-left: 4px solid #f39c12; padding: 14px 18px; border-radius: 8px; margin: 15px 0; color: #7f6000; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🤝 Has sido añadido como colaborador</h1>
+                <p>Sistema Intranet - ARMOTOR</p>
+            </div>
+            <div class="content">
+                <p>Hola <strong>' . htmlspecialchars($nombre_colaborador) . '</strong>,</p>
+
+                <div class="banner-info">
+                    <strong>📢 Nuevo rol:</strong> Has sido añadido como <strong>colaborador</strong> a la siguiente PQRS.
+                    ' . (!empty($nombre_principal) ? 'Fuiste agregado por <strong>' . htmlspecialchars($nombre_principal) . '</strong>.' : '') . '
+                </div>
+
+                <div class="radicado-box">
+                    <div class="radicado-label">Radicado de la PQRS</div>
+                    <p class="radicado-codigo">' . htmlspecialchars($codigo) . '</p>
+                </div>
+
+                <div class="detalle">
+                    <div class="detalle-item">
+                        <div class="label">📌 Tipo de solicitud</div>
+                        <div class="value"><strong>' . htmlspecialchars($tipo_legible) . '</strong></div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📊 Estado actual</div>
+                        <div class="value">' . htmlspecialchars($estado_legible) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">⚡ Prioridad</div>
+                        <div class="value">' . htmlspecialchars($prioridad_legible) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">👤 Cliente</div>
+                        <div class="value">' . htmlspecialchars($cliente) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📅 Fecha de radicación</div>
+                        <div class="value">' . date('d/m/Y', strtotime($fecha_radica)) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📝 Asunto</div>
+                        <div class="value">' . htmlspecialchars($asunto) . '</div>
+                    </div>';
+
+    if (!empty($descripcion)) {
+        $desc_corta = strlen($descripcion) > 400 ? substr($descripcion, 0, 400) . '...' : $descripcion;
+        $mensaje_html .= '
+                    <div class="detalle-item">
+                        <div class="label">📄 Descripción</div>
+                        <div class="value">' . nl2br(htmlspecialchars($desc_corta)) . '</div>
+                    </div>';
+    }
+
+    if (!empty($marca_vh) || !empty($placa)) {
+        $mensaje_html .= '
+                    <div class="detalle-item">
+                        <div class="label">🚗 Vehículo</div>
+                        <div class="value">' . htmlspecialchars(trim($marca_vh . ' ' . $placa)) . '</div>
+                    </div>';
+    }
+
+    $mensaje_html .= '
+                </div>
+
+                <p style="text-align: center; margin-top: 25px;">
+                    <a href="' . $url_base . 'admin/pqrs/ver.php?id=' . $pqrs_id . '" class="btn">
+                        🔍 Ver PQRS y Gestionar
+                    </a>
+                </p>
+
+                <p style="font-size: 13px; color: #7f8c8d; text-align: center; margin-top: 15px;">
+                    Como colaborador puedes comentar, adjuntar archivos y ver el detalle completo de esta PQRS.
+                </p>
+            </div>
+            <div class="footer">
+                <p><strong>ARMOTOR</strong> - Sistema de Gestión PQRSF</p>
+                <p>Este es un mensaje automático. Por favor no respondas a este correo.</p>
+            </div>
+        </div>
+    </body>
+    </html>';
+
+    $mensaje_texto  = "Has sido añadido como colaborador - ARMOTOR\n";
+    $mensaje_texto .= "================================\n\n";
+    $mensaje_texto .= "Hola " . $nombre_colaborador . ",\n\n";
+    $mensaje_texto .= "Has sido añadido como COLABORADOR a la siguiente PQRS.\n";
+    if (!empty($nombre_principal)) {
+        $mensaje_texto .= "Fuiste agregado por: " . $nombre_principal . "\n";
+    }
+    $mensaje_texto .= "\nRADICADO: " . $codigo . "\n\n";
+    $mensaje_texto .= "Detalles:\n";
+    $mensaje_texto .= "- Tipo: " . $tipo_legible . "\n";
+    $mensaje_texto .= "- Estado: " . $estado_legible . "\n";
+    $mensaje_texto .= "- Prioridad: " . $prioridad_legible . "\n";
+    $mensaje_texto .= "- Cliente: " . $cliente . "\n";
+    $mensaje_texto .= "- Fecha radicación: " . date('d/m/Y', strtotime($fecha_radica)) . "\n";
+    $mensaje_texto .= "- Asunto: " . $asunto . "\n";
+    if (!empty($marca_vh) || !empty($placa)) {
+        $mensaje_texto .= "- Vehículo: " . trim($marca_vh . ' ' . $placa) . "\n";
+    }
+    $mensaje_texto .= "\nGestionar en: " . $url_base . "admin/pqrs/ver.php?id=" . $pqrs_id . "\n\n";
+    $mensaje_texto .= "ARMOTOR - Sistema de Gestión PQRSF\n";
+    $mensaje_texto .= "Este es un mensaje automático.\n";
+
+    $asunto_email = "🤝 Colaborador añadido a PQRS: " . $codigo . " - ARMOTOR";
+
+    return enviarCorreo($email_colaborador, $asunto_email, $mensaje_html, $mensaje_texto);
 }
 ?>

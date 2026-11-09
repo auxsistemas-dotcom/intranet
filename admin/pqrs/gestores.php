@@ -12,10 +12,36 @@ if (!isset($_SESSION['usuario_id'])) {
 $rol_usuario = $_SESSION['rol'] ?? 3;
 $usuario_id = $_SESSION['usuario_id'];
 
-// Admin y Supervisor: acceso total
-if ($rol_usuario != 1 && $rol_usuario != 2) {
-    $_SESSION['error'] = "❌ No tienes permiso para gestionar gestores";
-    header('Location: ../../index.php');
+// ============================================
+// ✅ CONTROL DE ACCESO POR ROL + PERMISO PQRS
+// ============================================
+if ($rol_usuario == 1) {
+    // Admin: acceso total ✅
+    
+} elseif ($rol_usuario == 2) {
+    // Supervisor: verificar que tenga permiso de PQRS
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (empty($permiso['tiene_permiso'])) {
+        // ❌ Supervisor SIN permiso PQRS → vista de gestor
+        $_SESSION['error'] = "❌ No tienes permiso de supervisor para gestionar gestores de PQRS.";
+        header('Location: ../../aplicaciones/otros/pqrs/index.php');
+        exit();
+    }
+    // ✅ Supervisor CON permiso PQRS → acceso total
+    
+} else {
+    // Usuario normal (rol 3) → vista de gestor
+    header('Location: ../../aplicaciones/otros/pqrs/index.php');
     exit();
 }
 
@@ -202,7 +228,6 @@ if (isset($_SESSION['error'])) {
         body { font-family: 'Poppins', sans-serif; background: #d3d3d3; color: #2c3e50; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
-        /* ===== HEADER ===== */
         .header {
             background: #12232b;
             margin-bottom: 30px;
@@ -235,7 +260,6 @@ if (isset($_SESSION['error'])) {
             transform: translateY(-2px);
         }
 
-        /* ===== MENSAJES ===== */
         .mensaje-exito {
             background: #d4edda;
             color: #155724;
@@ -261,7 +285,6 @@ if (isset($_SESSION['error'])) {
             font-size: 14px;
         }
 
-        /* ===== CARD ===== */
         .card {
             background: white;
             border-radius: 16px;
@@ -293,7 +316,6 @@ if (isset($_SESSION['error'])) {
             padding-left: 19px;
         }
 
-        /* ===== BOTÓN AÑADIR ===== */
         .btn-añadir {
             background: linear-gradient(135deg, #27ae60, #2ecc71);
             color: white;
@@ -316,7 +338,6 @@ if (isset($_SESSION['error'])) {
             box-shadow: 0 6px 20px rgba(39,174,96,0.4);
         }
 
-        /* ===== BUSCADOR ===== */
         .buscador-container {
             margin-bottom: 20px;
             position: relative;
@@ -346,7 +367,6 @@ if (isset($_SESSION['error'])) {
             font-size: 16px;
         }
 
-        /* ===== TABLA ===== */
         .tabla-gestores {
             width: 100%;
             border-collapse: collapse;
@@ -417,7 +437,6 @@ if (isset($_SESSION['error'])) {
             font-weight: 600;
         }
 
-        /* ===== BOTÓN QUITAR ===== */
         .btn-quitar {
             background: #e74c3c;
             color: white;
@@ -437,7 +456,6 @@ if (isset($_SESSION['error'])) {
             transform: scale(1.1);
         }
 
-        /* ===== EMPTY STATE ===== */
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -455,7 +473,6 @@ if (isset($_SESSION['error'])) {
             font-size: 18px;
         }
 
-        /* ===== MODAL ===== */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -707,7 +724,6 @@ if (isset($_SESSION['error'])) {
             transform: none;
         }
 
-        /* ===== MODAL QUITAR GESTOR ===== */
         .modal-quitar .modal-header {
             background: linear-gradient(135deg, #c0392b, #e74c3c);
         }
@@ -750,7 +766,6 @@ if (isset($_SESSION['error'])) {
             box-shadow: 0 6px 18px rgba(231,76,60,0.4);
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .header .container { flex-direction: column; gap: 15px; text-align: center; }
             .card { padding: 20px; }
@@ -767,7 +782,6 @@ if (isset($_SESSION['error'])) {
     </style>
 </head>
 <body>
-    <!-- ===== HEADER ===== -->
     <header class="header">
         <div class="container">
             <div class="logo">
@@ -781,7 +795,6 @@ if (isset($_SESSION['error'])) {
     </header>
 
     <div class="container">
-        <!-- ===== MENSAJES ===== -->
         <?php if ($mensaje): ?>
             <div class="mensaje-exito" id="mensajeExito">
                 <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($mensaje); ?>
@@ -794,7 +807,6 @@ if (isset($_SESSION['error'])) {
             </div>
         <?php endif; ?>
 
-        <!-- ===== CARD PRINCIPAL ===== -->
         <div class="card">
             <div class="card-header">
                 <div>
@@ -809,7 +821,6 @@ if (isset($_SESSION['error'])) {
                 </button>
             </div>
 
-            <!-- ===== BUSCADOR ===== -->
             <?php if (!empty($gestores)): ?>
                 <div class="buscador-container">
                     <i class="fas fa-search icono-buscar"></i>
@@ -817,7 +828,6 @@ if (isset($_SESSION['error'])) {
                 </div>
             <?php endif; ?>
 
-            <!-- ===== TABLA ===== -->
             <?php if (empty($gestores)): ?>
                 <div class="empty-state">
                     <i class="fas fa-users"></i>
@@ -889,7 +899,6 @@ if (isset($_SESSION['error'])) {
         </div>
     </div>
 
-    <!-- ===== MODAL AÑADIR GESTOR ===== -->
     <div class="modal-overlay" id="modalAñadir">
         <div class="modal-content">
             <div class="modal-header">
@@ -963,7 +972,6 @@ if (isset($_SESSION['error'])) {
         </div>
     </div>
 
-    <!-- ===== MODAL QUITAR GESTOR ===== -->
     <div class="modal-overlay modal-quitar" id="modalQuitar">
         <div class="modal-content">
             <div class="modal-header">
@@ -1005,9 +1013,6 @@ if (isset($_SESSION['error'])) {
     <script>
     document.addEventListener('DOMContentLoaded', function () {
         
-        // ============================================
-        // ELEMENTOS DEL DOM
-        // ============================================
         const btnAbrirModal = document.getElementById('btnAbrirModal');
         const modalAñadir = document.getElementById('modalAñadir');
         const btnCerrarModalAñadir = document.getElementById('btnCerrarModalAñadir');
@@ -1028,14 +1033,8 @@ if (isset($_SESSION['error'])) {
         const tablaGestores = document.getElementById('tablaGestores');
         const sinResultados = document.getElementById('sinResultados');
         
-        // ============================================
-        // SELECCIÓN MÚLTIPLE
-        // ============================================
         let seleccionados = new Set();
         
-        // ============================================
-        // ABRIR / CERRAR MODAL AÑADIR
-        // ============================================
         function abrirModalAñadir() {
             modalAñadir.classList.add('activo');
             document.body.style.overflow = 'hidden';
@@ -1048,25 +1047,19 @@ if (isset($_SESSION['error'])) {
             modalAñadir.classList.remove('activo');
             document.body.style.overflow = '';
             
-            // Resetear formulario
             if (formAñadirGestor) formAñadirGestor.reset();
-            
-            // Limpiar set
             seleccionados.clear();
             
-            // Limpiar clases visuales
             document.querySelectorAll('.usuario-item').forEach(item => {
                 item.classList.remove('seleccionado');
                 item.style.display = '';
             });
             
-            // Resetear botón
             if (btnConfirmarAñadir) {
                 btnConfirmarAñadir.disabled = true;
                 btnConfirmarAñadir.innerHTML = '<i class="fas fa-check"></i> Añadir gestor';
             }
             
-            // Limpiar buscador
             if (buscadorUsuarios) buscadorUsuarios.value = '';
             if (sinResultadosUsuarios) sinResultadosUsuarios.style.display = 'none';
         }
@@ -1081,9 +1074,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // SELECCIONAR / DESELECCIONAR USUARIOS
-        // ============================================
         if (listaUsuarios) {
             listaUsuarios.addEventListener('click', function (e) {
                 const item = e.target.closest('.usuario-item');
@@ -1116,9 +1106,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // BUSCADOR DE USUARIOS EN MODAL
-        // ============================================
         if (buscadorUsuarios && listaUsuarios) {
             buscadorUsuarios.addEventListener('input', function () {
                 const termino = this.value.toLowerCase().trim();
@@ -1141,9 +1128,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // VALIDAR FORM AÑADIR
-        // ============================================
         if (formAñadirGestor) {
             formAñadirGestor.addEventListener('submit', function (e) {
                 if (seleccionados.size === 0) {
@@ -1156,9 +1140,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // ABRIR MODAL QUITAR
-        // ============================================
         document.querySelectorAll('.btn-quitar').forEach(btn => {
             btn.addEventListener('click', function () {
                 const gestorId = this.getAttribute('data-gestor-id');
@@ -1171,9 +1152,6 @@ if (isset($_SESSION['error'])) {
             });
         });
         
-        // ============================================
-        // CERRAR MODAL QUITAR
-        // ============================================
         function cerrarModalQuitar() {
             modalQuitar.classList.remove('activo');
             document.body.style.overflow = '';
@@ -1189,9 +1167,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // BUSCADOR DE GESTORES EN TABLA
-        // ============================================
         if (buscadorGestores && tablaGestores) {
             buscadorGestores.addEventListener('input', function () {
                 const termino = this.value.toLowerCase().trim();
@@ -1214,9 +1189,6 @@ if (isset($_SESSION['error'])) {
             });
         }
         
-        // ============================================
-        // CERRAR MODALES CON ESC
-        // ============================================
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 if (modalAñadir && modalAñadir.classList.contains('activo')) {
@@ -1228,9 +1200,6 @@ if (isset($_SESSION['error'])) {
             }
         });
         
-        // ============================================
-        // AUTO-OCULTAR MENSAJE DE ÉXITO
-        // ============================================
         const mensajeExito = document.getElementById('mensajeExito');
         if (mensajeExito) {
             setTimeout(() => {

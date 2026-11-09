@@ -13,16 +13,45 @@ if (!isset($_SESSION['usuario_id'])) {
     exit();
 }
 
-$rol_usuario = $_SESSION['rol'] ?? 3;
-$usuario_id  = $_SESSION['usuario_id'];
+$rol_usuario = (int)($_SESSION['rol'] ?? 3);
+$usuario_id  = (int)$_SESSION['usuario_id'];
 
-// Admin y Supervisor no deberían entrar aquí (tienen su propia vista)
-if ($rol_usuario == 1 || $rol_usuario == 2) {
+// ============================================
+// ✅ CONTROL DE ACCESO
+// ============================================
+// Admin (1)                          → al panel admin
+// Supervisor (2) CON permiso PQRS    → al panel admin
+// Supervisor (2) SIN permiso PQRS    → SE QUEDA AQUÍ como gestor
+// Rol 3                              → SE QUEDA AQUÍ como gestor
+
+$es_supervisor_de_pqrs = false;
+
+if ($rol_usuario === 1) {
+    $es_supervisor_de_pqrs = true;
+} elseif ($rol_usuario === 2) {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ((int)($permiso['tiene_permiso'] ?? 0) > 0) {
+        $es_supervisor_de_pqrs = true;
+    }
+}
+
+// Solo los supervisores reales de PQRS van al panel admin
+if ($es_supervisor_de_pqrs) {
     header('Location: ../../../admin/pqrs/index.php');
     exit();
 }
 
-// Solo gestores (rol 3)
+// Los demás (rol 3 y supervisor sin permiso PQRS) siguen aquí como gestores
 $usuario = obtenerUsuario();
 $nombre_usuario = $usuario['nombre_completo'];
 

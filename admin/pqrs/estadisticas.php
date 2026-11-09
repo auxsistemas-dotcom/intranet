@@ -14,10 +14,36 @@ if (!isset($_SESSION['usuario_id'])) {
 $rol_usuario = $_SESSION['rol'] ?? 3;
 $usuario_id = $_SESSION['usuario_id'];
 
-// Admin y Supervisor: acceso total
-if ($rol_usuario != 1 && $rol_usuario != 2) {
-    $_SESSION['error'] = "❌ No tienes permiso para ver estadísticas";
-    header('Location: ../../index.php');
+// ============================================
+// ✅ CONTROL DE ACCESO POR ROL + PERMISO PQRS
+// ============================================
+if ($rol_usuario == 1) {
+    // Admin: acceso total ✅
+    
+} elseif ($rol_usuario == 2) {
+    // Supervisor: verificar que tenga permiso de PQRS
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS tiene_permiso
+        FROM permisos_usuarios pu
+        JOIN modulos m ON pu.modulo_id = m.id
+        WHERE pu.usuario_id = ?
+          AND m.nombre = 'PQRS'
+          AND m.activo = 1
+    ");
+    $stmt->execute([$usuario_id]);
+    $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (empty($permiso['tiene_permiso'])) {
+        // ❌ Supervisor SIN permiso PQRS → vista de gestor
+        $_SESSION['error'] = "❌ No tienes permiso de supervisor para ver estadísticas de PQRS.";
+        header('Location: ../../aplicaciones/otros/pqrs/index.php');
+        exit();
+    }
+    // ✅ Supervisor CON permiso PQRS → acceso total
+    
+} else {
+    // Usuario normal (rol 3) → vista de gestor
+    header('Location: ../../aplicaciones/otros/pqrs/index.php');
     exit();
 }
 
@@ -82,7 +108,6 @@ $filtro_buscar     = trim($_GET['buscar']?? '');
 $where = [];
 $params = [];
 
-// Filtro por período (atajos)
 $campo_fecha = "COALESCE(p.marca_temporal, p.creado_el)";
 
 switch ($filtro_fecha) {
@@ -117,43 +142,36 @@ switch ($filtro_fecha) {
         break;
 }
 
-// Filtro por tipo
 if (!empty($filtro_tipo) && array_key_exists($filtro_tipo, $tipos_solicitud)) {
     $where[] = "p.tipo_solicitud = ?";
     $params[] = $filtro_tipo;
 }
 
-// Filtro por estado
 if (!empty($filtro_estado) && array_key_exists($filtro_estado, $estados)) {
     $where[] = "p.estado = ?";
     $params[] = $filtro_estado;
 }
 
-// Filtro por prioridad
 if (!empty($filtro_prioridad) && array_key_exists($filtro_prioridad, $prioridades)) {
     $where[] = "p.prioridad = ?";
     $params[] = $filtro_prioridad;
 }
 
-// Filtro por gestor principal
 if (!empty($filtro_gestor) && is_numeric($filtro_gestor)) {
     $where[] = "p.gestor_principal_id = ?";
     $params[] = intval($filtro_gestor);
 }
 
-// Filtro por sede
 if (!empty($filtro_sede)) {
     $where[] = "p.ciudad_concesionario LIKE ?";
     $params[] = '%' . $filtro_sede . '%';
 }
 
-// Filtro por marca VH
 if (!empty($filtro_marca_vh)) {
     $where[] = "p.marca_vh = ?";
     $params[] = $filtro_marca_vh;
 }
 
-// Búsqueda por código/asunto/cliente
 if (!empty($filtro_buscar)) {
     $where[] = "(p.codigo LIKE ? OR p.asunto LIKE ? OR p.nombre_completo LIKE ?)";
     $like = '%' . $filtro_buscar . '%';
@@ -189,7 +207,7 @@ $total_cerrados = $kpi['cerrados'] ?? 0;
 $total_sin_gestor = $kpi['sin_gestor'] ?? 0;
 
 // ============================================
-// KPI 2: TIEMPO PROMEDIO DE RESPUESTA (días)
+// KPI 2: TIEMPO PROMEDIO DE RESPUESTA
 // ============================================
 $sql = "SELECT AVG(DATEDIFF(p.fecha_cierre, COALESCE(p.marca_temporal, p.creado_el))) as promedio
         FROM pqrs p
@@ -229,7 +247,7 @@ $tipo_mas_frecuente_nombre = $tipos_solicitud[$tipo_mas_frecuente] ?? '—';
 $tipo_mas_frecuente_cantidad = $tipo_top['total'] ?? 0;
 
 // ============================================
-// KPI 5: SEDE CON MÁS PQRS (antes "Ciudad")
+// KPI 5: SEDE CON MÁS PQRS
 // ============================================
 $sql = "SELECT p.ciudad_concesionario AS sede, COUNT(*) as total
         FROM pqrs p
@@ -301,7 +319,7 @@ foreach ($data_prioridades_raw as $row) {
     ];
 }
 
-// GRÁFICO 4: Top 10 Sedes (antes "Top 10 Ciudades")
+// GRÁFICO 4: Top 10 Sedes
 $sql = "SELECT p.ciudad_concesionario as sede, COUNT(*) as total
         FROM pqrs p
         $where_clause
@@ -323,7 +341,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $data_sedes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// GRÁFICO 5: Distribución por Sede (Dona) — antes era la 6
+// GRÁFICO 5: Distribución por Sede (Dona)
 $sql = "SELECT p.ciudad_concesionario as sede, COUNT(*) as total
         FROM pqrs p
         $where_clause
@@ -345,7 +363,7 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $data_sedes_dona = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// GRÁFICO 6: Evolución mensual (últimos 12 meses)
+// GRÁFICO 6: Evolución mensual
 $sql = "SELECT 
             DATE_FORMAT(COALESCE(p.marca_temporal, p.creado_el), '%Y-%m') as mes,
             DATE_FORMAT(COALESCE(p.marca_temporal, p.creado_el), '%b %Y') as mes_label,
@@ -937,7 +955,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 '#f39c12', '#1abc9c', '#34495e', '#16a085', '#c0392b'
             ];
 
-            // GRÁFICO 1: Distribución por Tipo (Dona)
             const ctxTipos = document.getElementById('graficoTipos');
             if (ctxTipos && dataTipos.length > 0) {
                 new Chart(ctxTipos, {
@@ -973,7 +990,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // GRÁFICO 2: Distribución por Estado (Barras)
             const ctxEstados = document.getElementById('graficoEstados');
             if (ctxEstados && dataEstados.length > 0) {
                 const coloresEstados = ['#f39c12', '#3498db', '#9b59b6', '#27ae60'];
@@ -1009,7 +1025,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // GRÁFICO 3: Evolución mensual (Línea)
             const ctxEvolucion = document.getElementById('graficoEvolucion');
             if (ctxEvolucion && dataEvolucion.length > 0) {
                 new Chart(ctxEvolucion, {
@@ -1048,7 +1063,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // GRÁFICO 4: Distribución por Prioridad (Dona)
             const ctxPrioridades = document.getElementById('graficoPrioridades');
             if (ctxPrioridades && dataPrioridades.length > 0) {
                 const coloresPrio = { 'Alta': '#e74c3c', 'Media': '#f39c12', 'Baja': '#27ae60' };
@@ -1073,7 +1087,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // GRÁFICO 5: Top 10 Sedes (Barras horizontales) — antes "Top 10 Ciudades"
             const ctxSedes = document.getElementById('graficoSedes');
             if (ctxSedes && dataSedes.length > 0) {
                 new Chart(ctxSedes, {
@@ -1097,7 +1110,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // GRÁFICO 6: Distribución por Sede (Dona)
             const ctxSedesDona = document.getElementById('graficoSedesDona');
             if (ctxSedesDona && dataSedesDona.length > 0) {
                 new Chart(ctxSedesDona, {
@@ -1121,7 +1133,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // TOGGLE DE CAMPOS DE FECHA
             const selectFecha = document.getElementById('selectFecha');
             const rangoFechas = document.getElementById('rangoFechas');
             const rangoFechasHasta = document.getElementById('rangoFechasHasta');
@@ -1138,7 +1149,6 @@ $hay_filtros = !empty($filtro_tipo) || !empty($filtro_estado) || !empty($filtro_
                 });
             }
 
-            // VALIDACIÓN: EXPORTAR SOLO CON RANGO
             const formExportar = document.getElementById('formExportar');
             if (formExportar) {
                 formExportar.addEventListener('submit', function(e) {

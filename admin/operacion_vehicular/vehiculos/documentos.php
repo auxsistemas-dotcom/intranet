@@ -50,11 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     
     $tipos_validos = ['SOAT', 'TECNOMECANICA'];
     
-    // Validaciones
     if (!in_array($tipo_doc, $tipos_validos)) {
         $error = "❌ Tipo de documento no válido";
     }
-    // Si es TECNOMECANICA y el VH <5 años → rechazar
     elseif ($tipo_doc === 'TECNOMECANICA' && !$requiere_tecno) {
         $error = "❌ Este vehículo NO requiere Tecnomecánica (tiene menos de 5 años)";
     }
@@ -71,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         $error = "❌ La fecha de vencimiento debe ser posterior a la de expedición";
     }
     else {
-        // Verificar que NO exista ya del mismo tipo en sesión
         $existe = false;
         foreach ($vehiculo['documentos_temp'] as $doc) {
             if ($doc['tipo_documento'] === $tipo_doc) {
@@ -83,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         if ($existe) {
             $error = "❌ Ya agregaste un documento de tipo " . ($tipo_doc === 'SOAT' ? 'SOAT' : 'Tecnomecánica');
         } else {
-            // ✅ Guardar en sesión temporal
             $_SESSION['vehiculo_temp']['documentos_temp'][] = [
                 'tipo_documento' => $tipo_doc,
                 'fecha_expedicion' => $fecha_expedicion,
@@ -116,7 +112,6 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
 if (isset($_GET['finalizar'])) {
     $documentos = $_SESSION['vehiculo_temp']['documentos_temp'];
     
-    // Verificar que tenga SOAT y Tecno si aplica
     $tiene_soat = false;
     $tiene_tecno = false;
     foreach ($documentos as $doc) {
@@ -124,7 +119,6 @@ if (isset($_GET['finalizar'])) {
         if ($doc['tipo_documento'] === 'TECNOMECANICA') $tiene_tecno = true;
     }
     
-    // Validaciones
     if (!$tiene_soat) {
         $error = "❌ Debes agregar el SOAT antes de finalizar";
     }
@@ -133,29 +127,38 @@ if (isset($_GET['finalizar'])) {
     }
     else {
         try {
-            // ⚠️ INSERT separado (Opción B)
-            // 1. Insertar el vehículo
+            $pdo->beginTransaction();
+            
+            // ============================================
+            // ✅ 1. INSERT del vehículo CON kilometraje
+            // ============================================
             $stmt = $pdo->prepare("
-                INSERT INTO ope_vehiculos (placa, marca, modelo, referencia, fecha_matricula, tipo, activo, añadido_por, creado_el)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, NOW())
+                INSERT INTO ope_vehiculos 
+                    (placa, marca, modelo, referencia, tipo, kilometraje, fecha_matricula, activo, añadido_por, creado_el)
+                VALUES 
+                    (?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
             ");
             $stmt->execute([
                 $vehiculo['placa'],
                 $vehiculo['marca'],
                 $vehiculo['modelo'],
                 $vehiculo['referencia'],
-                $vehiculo['fecha_matricula'],
                 $vehiculo['tipo'],
+                isset($vehiculo['kilometraje']) ? intval($vehiculo['kilometraje']) : 0,
+                $vehiculo['fecha_matricula'],
                 $vehiculo['añadido_por']
             ]);
             
             $vehiculo_id = $pdo->lastInsertId();
             
-            // 2. Insertar los documentos (sin numero_documento)
+            // ============================================
+            // ✅ 2. INSERT de los documentos
+            // ============================================
             $stmt = $pdo->prepare("
                 INSERT INTO ope_documentos_vh 
-                (vehiculo_id, tipo_documento, fecha_expedicion, fecha_vencimiento, activo, añadido_por, creado_el)
-                VALUES (?, ?, ?, ?, 1, ?, NOW())
+                    (vehiculo_id, tipo_documento, fecha_expedicion, fecha_vencimiento, activo, añadido_por, creado_el)
+                VALUES 
+                    (?, ?, ?, ?, 1, ?, NOW())
             ");
             
             foreach ($documentos as $doc) {
@@ -168,7 +171,8 @@ if (isset($_GET['finalizar'])) {
                 ]);
             }
             
-            // ✅ Limpiar sesión temporal
+            $pdo->commit();
+            
             unset($_SESSION['vehiculo_temp']);
             
             $_SESSION['mensaje'] = "✅ Vehículo {$vehiculo['placa']} y " . count($documentos) . " documento(s) guardados correctamente";
@@ -176,6 +180,9 @@ if (isset($_GET['finalizar'])) {
             exit();
             
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log("Error al guardar vehículo: " . $e->getMessage());
             $error = "❌ Error al guardar. Intenta de nuevo.";
         }
@@ -184,21 +191,18 @@ if (isset($_GET['finalizar'])) {
 
 // --- CANCELAR (volver a agregar CON datos precargados) ---
 if (isset($_GET['cancelar'])) {
-    // ✅ NO borrar vehiculo_temp para que agregar.php precargue los datos
     header("Location: agregar.php");
     exit();
 }
 
-// Recargar documentos desde sesión (por si se agregó/eliminó)
+// Recargar documentos desde sesión
 $documentos = $_SESSION['vehiculo_temp']['documentos_temp'];
 
-// Recuperar mensaje
 if (isset($_SESSION['mensaje'])) {
     $mensaje = $_SESSION['mensaje'];
     unset($_SESSION['mensaje']);
 }
 
-// Verificar qué documentos ya están agregados
 $tiene_soat = false;
 $tiene_tecno = false;
 foreach ($documentos as $doc) {
@@ -206,9 +210,6 @@ foreach ($documentos as $doc) {
     if ($doc['tipo_documento'] === 'TECNOMECANICA') $tiene_tecno = true;
 }
 
-// ============================================
-// ✅ FUNCIÓN: Calcular estado de vencimiento
-// ============================================
 function calcularEstadoVencimiento($fecha_vencimiento) {
     if (empty($fecha_vencimiento)) {
         return ['clase' => 'sin-datos', 'texto' => '⚪ Sin datos'];
@@ -252,7 +253,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             padding: 20px 40px;
         }
         
-        /* ========== HEADER ========== */
         .header {
             background: #12232b;
             margin-bottom: 30px;
@@ -292,7 +292,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             transform: translateY(-2px);
         }
         
-        /* ========== CARD ========== */
         .card {
             background: white;
             border-radius: 12px;
@@ -301,7 +300,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             margin-bottom: 20px;
         }
         
-        /* ========== VEHÍCULO HEADER ========== */
         .vehiculo-header {
             display: flex;
             align-items: center;
@@ -357,7 +355,22 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             color: white;
         }
         
-        /* ========== BANNER TEMPORAL ========== */
+        .vehiculo-tipo.propio {
+            background: #8e44ad;
+        }
+        
+        .vehiculo-km {
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #e8f4f8;
+            color: #1a5276;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
         .banner-temporal {
             background: #fef3c7;
             border-left: 4px solid #f39c12;
@@ -371,12 +384,8 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             gap: 10px;
         }
         
-        .banner-temporal i {
-            font-size: 18px;
-            color: #f39c12;
-        }
+        .banner-temporal i { font-size: 18px; color: #f39c12; }
         
-        /* ========== MENSAJES ========== */
         .mensaje-error {
             background: #fadbd8;
             color: #922b21;
@@ -404,7 +413,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             transition: opacity 0.5s ease;
         }
         
-        /* ========== FORM DOCUMENTO ========== */
         .form-titulo {
             font-size: 16px;
             color: #12232b;
@@ -472,14 +480,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
         }
         
-        .form-campo input:disabled,
-        .form-campo select:disabled {
-            background: #ecf0f1;
-            color: #95a5a6;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        
         .btn-agregar-doc {
             background: #27ae60;
             color: white;
@@ -504,7 +504,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             box-shadow: 0 4px 15px rgba(39,174,96,0.3);
         }
         
-        /* ========== AVISO TECNO ========== */
         .aviso-tecno {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -524,7 +523,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             margin-top: 2px;
         }
         
-        /* ========== LISTA DOCUMENTOS ========== */
         .lista-titulo {
             font-size: 16px;
             color: #12232b;
@@ -593,9 +591,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             letter-spacing: 0.5px;
         }
         
-        .documento-tipo.tecno {
-            background: #8e44ad;
-        }
+        .documento-tipo.tecno { background: #8e44ad; }
         
         .documento-fecha {
             font-size: 13px;
@@ -605,10 +601,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             gap: 6px;
         }
         
-        .documento-fecha i {
-            color: #7f8c8d;
-            font-size: 12px;
-        }
+        .documento-fecha i { color: #7f8c8d; font-size: 12px; }
         
         .documento-estado {
             display: inline-block;
@@ -645,7 +638,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             transform: translateY(-2px);
         }
         
-        /* ========== EMPTY STATE ========== */
         .empty-documentos {
             text-align: center;
             padding: 40px 20px;
@@ -668,7 +660,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
         
         .empty-documentos p { font-size: 13px; }
         
-        /* ========== BOTONES FINALES ========== */
         .footer-acciones {
             display: flex;
             justify-content: space-between;
@@ -740,7 +731,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
 </head>
 <body>
 
-<!-- ========== HEADER ========== -->
 <header class="header">
     <div class="container">
         <div class="logo">
@@ -753,12 +743,11 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
     </div>
 </header>
 
-<!-- ========== CONTENIDO ========== -->
 <div class="container">
     
     <div class="card">
         
-        <!-- ===== INFO VEHÍCULO ===== -->
+        <!-- ===== INFO VEHÍCULO (ahora con KM) ===== -->
         <div class="vehiculo-header">
             <div class="vehiculo-avatar">
                 <i class="fas fa-car"></i>
@@ -771,12 +760,17 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                     <span><i class="fas fa-tag"></i> <?php echo htmlspecialchars($vehiculo['marca']); ?></span>
                     <span><i class="fas fa-calendar"></i> <?php echo htmlspecialchars($vehiculo['modelo']); ?></span>
                     <span><i class="fas fa-list"></i> <?php echo htmlspecialchars($vehiculo['referencia']); ?></span>
-                    <span class="vehiculo-tipo"><?php echo htmlspecialchars($vehiculo['tipo']); ?></span>
+                    <span class="vehiculo-tipo <?php echo $vehiculo['tipo'] === 'PROPIO' ? 'propio' : ''; ?>">
+                        <?php echo htmlspecialchars($vehiculo['tipo']); ?>
+                    </span>
+                    <span class="vehiculo-km">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <?php echo number_format(intval($vehiculo['kilometraje'] ?? 0)); ?> km
+                    </span>
                 </div>
             </div>
         </div>
         
-        <!-- ===== BANNER TEMPORAL ===== -->
         <div class="banner-temporal">
             <i class="fas fa-exclamation-triangle"></i>
             <div>
@@ -784,7 +778,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             </div>
         </div>
         
-        <!-- ===== MENSAJES ===== -->
         <?php if ($mensaje): ?>
             <div class="mensaje-exito" id="msgExito">
                 <i class="fas fa-check-circle"></i>
@@ -851,7 +844,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                 </div>
             </form>
             
-            <!-- Aviso si el VH es <5 años -->
             <?php if (!$requiere_tecno): ?>
                 <div class="aviso-tecno">
                     <i class="fas fa-info-circle"></i>
@@ -915,7 +907,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             </div>
         <?php endif; ?>
         
-        <!-- ===== INFO DE REQUERIDOS ===== -->
         <div class="info-requeridos">
             <?php if ($tiene_soat): ?>
                 <span class="check"><i class="fas fa-check-circle"></i> SOAT agregado</span>
@@ -932,7 +923,6 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             <?php endif; ?>
         </div>
         
-        <!-- ===== BOTONES FINALES ===== -->
         <div class="footer-acciones">
             <a href="?cancelar=1" class="btn-cancelar">
                 <i class="fas fa-times"></i> Cancelar
