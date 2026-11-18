@@ -28,7 +28,6 @@ if (isset($_GET['cancelar'])) {
 
 // ============================================
 // ✅ PRECARGAR VALORES DESDE SESIÓN
-// (si vienes de "Cancelar" en documentos.php)
 // ============================================
 $valores = [
     'placa' => '',
@@ -36,8 +35,10 @@ $valores = [
     'modelo' => '',
     'referencia' => '',
     'fecha_matricula' => '',
-    'tipo' => '',
-    'kilometraje' => 0
+    'tipo_vehiculo' => '',
+    'modalidad_vehiculo' => '',
+    'kilometraje' => 0,
+    'fecha_ultimo_mantenimiento' => ''  // ✅ NUEVO
 ];
 
 if (isset($_SESSION['vehiculo_temp'])) {
@@ -46,54 +47,65 @@ if (isset($_SESSION['vehiculo_temp'])) {
     $valores['modelo'] = $_SESSION['vehiculo_temp']['modelo'] ?? '';
     $valores['referencia'] = $_SESSION['vehiculo_temp']['referencia'] ?? '';
     $valores['fecha_matricula'] = $_SESSION['vehiculo_temp']['fecha_matricula'] ?? '';
-    $valores['tipo'] = $_SESSION['vehiculo_temp']['tipo'] ?? '';
+    $valores['tipo_vehiculo'] = $_SESSION['vehiculo_temp']['tipo_vehiculo'] ?? '';
+    $valores['modalidad_vehiculo'] = $_SESSION['vehiculo_temp']['modalidad_vehiculo'] ?? '';
     $valores['kilometraje'] = $_SESSION['vehiculo_temp']['kilometraje'] ?? 0;
+    $valores['fecha_ultimo_mantenimiento'] = $_SESSION['vehiculo_temp']['fecha_ultimo_mantenimiento'] ?? '';
 }
 
 // ============================================
 // ✅ PROCESAR FORMULARIO
 // ============================================
 $error = '';
-$tipos_validos = ['NUEVO', 'TEST_DRIVE', 'USADO', 'PROPIO'];
+
+$tipos_vehiculo_validos = ['MOTO', 'CARRO', 'CAMION'];
+$modalidades_validas = ['NUEVO', 'TEST_DRIVE', 'USADO', 'PROPIO'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Recoger datos - TODOS los campos de texto en MAYÚSCULAS
+    // Recoger datos
     $valores['placa'] = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_POST['placa'] ?? ''));
     $valores['marca'] = strtoupper(trim($_POST['marca'] ?? ''));
     $valores['modelo'] = strtoupper(trim($_POST['modelo'] ?? ''));
     $valores['referencia'] = strtoupper(trim($_POST['referencia'] ?? ''));
     $valores['fecha_matricula'] = trim($_POST['fecha_matricula'] ?? '');
-    $valores['tipo'] = strtoupper(trim($_POST['tipo'] ?? ''));
+    $valores['tipo_vehiculo'] = strtoupper(trim($_POST['tipo_vehiculo'] ?? ''));
+    $valores['modalidad_vehiculo'] = strtoupper(trim($_POST['modalidad_vehiculo'] ?? ''));
     $valores['kilometraje'] = isset($_POST['kilometraje']) ? intval($_POST['kilometraje']) : 0;
+    $valores['fecha_ultimo_mantenimiento'] = trim($_POST['fecha_ultimo_mantenimiento'] ?? ''); // ✅ NUEVO
     
     // ✅ VALIDACIONES
     if (empty($valores['placa']) || empty($valores['marca']) || empty($valores['modelo']) || 
-        empty($valores['referencia']) || empty($valores['fecha_matricula']) || empty($valores['tipo'])) {
-        $error = "❌ Todos los campos son obligatorios";
+        empty($valores['referencia']) || empty($valores['fecha_matricula']) || 
+        empty($valores['tipo_vehiculo']) || empty($valores['modalidad_vehiculo']) ||
+        empty($valores['fecha_ultimo_mantenimiento'])) {
+        $error = "❌ Todos los campos son obligatorios (incluida la fecha de mantenimiento)";
     }
-    // Validar formato de placa
     elseif (!preg_match('/^([A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]|[A-Z]{3}[0-9]{2})$/', $valores['placa'])) {
         $error = "❌ Formato de placa no válido. Ejemplos: ABC123, ABC12D, ABC12";
     }
-    // Validar tipo
-    elseif (!in_array($valores['tipo'], $tipos_validos)) {
+    elseif (!in_array($valores['tipo_vehiculo'], $tipos_vehiculo_validos)) {
         $error = "❌ Tipo de vehículo no válido";
     }
-    // Validar que la fecha de matrícula no sea futura
+    elseif (!in_array($valores['modalidad_vehiculo'], $modalidades_validas)) {
+        $error = "❌ Modalidad de vehículo no válida";
+    }
     elseif (strtotime($valores['fecha_matricula']) > time()) {
         $error = "❌ La fecha de matrícula no puede ser futura";
     }
-    // ✅ VALIDAR KILOMETRAJE
+    elseif (strtotime($valores['fecha_ultimo_mantenimiento']) > time()) {
+        $error = "❌ La fecha del último mantenimiento no puede ser futura";
+    }
+    elseif (strtotime($valores['fecha_ultimo_mantenimiento']) < strtotime($valores['fecha_matricula'])) {
+        $error = "❌ La fecha del último mantenimiento no puede ser anterior a la matrícula";
+    }
     elseif ($valores['kilometraje'] < 0) {
         $error = "❌ El kilometraje no puede ser negativo";
     }
-    // ✅ Si es NUEVO, el KM debe ser 0
-    elseif ($valores['tipo'] === 'NUEVO' && $valores['kilometraje'] !== 0) {
+    elseif ($valores['modalidad_vehiculo'] === 'NUEVO' && $valores['kilometraje'] !== 0) {
         $error = "❌ Un vehículo NUEVO debe tener kilometraje 0";
     }
-    // ✅ Si es TEST_DRIVE, USADO o PROPIO, el KM debe ser mayor a 0
-    elseif (in_array($valores['tipo'], ['TEST_DRIVE', 'USADO', 'PROPIO']) && $valores['kilometraje'] <= 0) {
-        $error = "❌ Un vehículo " . $valores['tipo'] . " debe tener kilometraje mayor a 0";
+    elseif (in_array($valores['modalidad_vehiculo'], ['TEST_DRIVE', 'USADO', 'PROPIO']) && $valores['kilometraje'] <= 0) {
+        $error = "❌ Un vehículo " . $valores['modalidad_vehiculo'] . " debe tener kilometraje mayor a 0";
     }
     else {
         // Verificar que NO exista ya en BD
@@ -103,23 +115,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->fetch()) {
             $error = "❌ Ya existe un vehículo con la placa {$valores['placa']}";
         } else {
-            // ✅ PRESERVAR documentos_temp si ya existían
+            // Preservar documentos_temp si ya existían
             $documentos_existentes = $_SESSION['vehiculo_temp']['documentos_temp'] ?? [];
             
-            // ✅ GUARDAR EN SESIÓN TEMPORAL
+            // Guardar en sesión temporal con los nuevos campos
             $_SESSION['vehiculo_temp'] = [
                 'placa' => $valores['placa'],
                 'marca' => $valores['marca'],
                 'modelo' => $valores['modelo'],
                 'referencia' => $valores['referencia'],
                 'fecha_matricula' => $valores['fecha_matricula'],
-                'tipo' => $valores['tipo'],
+                'tipo_vehiculo' => $valores['tipo_vehiculo'],
+                'modalidad_vehiculo' => $valores['modalidad_vehiculo'],
                 'kilometraje' => $valores['kilometraje'],
+                'fecha_ultimo_mantenimiento' => $valores['fecha_ultimo_mantenimiento'], // ✅ NUEVO
                 'añadido_por' => $_SESSION['usuario_id'],
                 'documentos_temp' => $documentos_existentes
             ];
             
-            // Redirigir a documentos
             header("Location: documentos.php");
             exit();
         }
@@ -337,6 +350,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-left: 3px solid #f39c12;
         }
         
+        /* ============================================ */
+        /* ✅ NUEVO: Aviso de mantenimiento             */
+        /* ============================================ */
+        .form-campo .aviso-mantenimiento {
+            font-size: 12px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-top: 4px;
+            display: none;
+            align-items: flex-start;
+            gap: 8px;
+            line-height: 1.5;
+        }
+        
+        .form-campo .aviso-mantenimiento.visible {
+            display: flex;
+        }
+        
+        .form-campo .aviso-mantenimiento i {
+            font-size: 14px;
+            margin-top: 1px;
+            flex-shrink: 0;
+        }
+        
+        .form-campo .aviso-mantenimiento.ok {
+            background: #d5f5e3;
+            color: #1a7a3a;
+            border-left: 3px solid #27ae60;
+        }
+        
+        .form-campo .aviso-mantenimiento.proximo {
+            background: #fef9e7;
+            color: #7f6000;
+            border-left: 3px solid #f39c12;
+        }
+        
+        .form-campo .aviso-mantenimiento.vencido {
+            background: #fadbd8;
+            color: #922b21;
+            border-left: 3px solid #e74c3c;
+        }
+        
+        /* Separador de secciones */
+        .form-separador {
+            grid-column: 1 / -1;
+            font-size: 13px;
+            font-weight: 700;
+            color: #173742;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f0f0f0;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .form-separador i {
+            color: #173742;
+            font-size: 14px;
+        }
+        
         .form-acciones {
             display: flex;
             justify-content: flex-end;
@@ -432,6 +509,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <form method="POST" action="" id="formVehiculo">
             <div class="form-grid">
                 
+                <!-- ============================================ -->
+                <!-- SECCIÓN 1: Datos básicos del vehículo -->
+                <!-- ============================================ -->
+                <div class="form-separador">
+                    <i class="fas fa-info-circle"></i>
+                    Datos del vehículo
+                </div>
+                
+                <div class="form-campo">
+                    <label for="tipo_vehiculo">Tipo de vehículo <span class="obligatorio">*</span></label>
+                    <select name="tipo_vehiculo" id="tipo_vehiculo" required>
+                        <option value="">Selecciona...</option>
+                        <option value="CARRO" <?php echo $valores['tipo_vehiculo'] === 'CARRO' ? 'selected' : ''; ?>>
+                            🚗 Carro
+                        </option>
+                        <option value="MOTO" <?php echo $valores['tipo_vehiculo'] === 'MOTO' ? 'selected' : ''; ?>>
+                            🏍️ Moto
+                        </option>
+                        <option value="CAMION" <?php echo $valores['tipo_vehiculo'] === 'CAMION' ? 'selected' : ''; ?>>
+                            🚚 Camión
+                        </option>
+                    </select>
+                </div>
+                
                 <div class="form-campo">
                     <label for="placa">Placa <span class="obligatorio">*</span></label>
                     <input 
@@ -446,25 +547,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         autofocus
                     >
                     <small>Formatos válidos: ABC123, ABC12D o ABC12</small>
-                </div>
-                
-                <div class="form-campo">
-                    <label for="tipo">Tipo <span class="obligatorio">*</span></label>
-                    <select name="tipo" id="tipo" required onchange="actualizarKilometraje()">
-                        <option value="">Selecciona...</option>
-                        <option value="NUEVO" <?php echo $valores['tipo'] === 'NUEVO' ? 'selected' : ''; ?>>
-                            🆕 NUEVO
-                        </option>
-                        <option value="TEST_DRIVE" <?php echo $valores['tipo'] === 'TEST_DRIVE' ? 'selected' : ''; ?>>
-                            🚗 TEST DRIVE
-                        </option>
-                        <option value="USADO" <?php echo $valores['tipo'] === 'USADO' ? 'selected' : ''; ?>>
-                            🔄 USADO
-                        </option>
-                        <option value="PROPIO" <?php echo $valores['tipo'] === 'PROPIO' ? 'selected' : ''; ?>>
-                            👤 PROPIO (empleado)
-                        </option>
-                    </select>
                 </div>
                 
                 <div class="form-campo">
@@ -495,7 +577,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     >
                 </div>
                 
-                <div class="form-campo">
+                <div class="form-campo full-width">
                     <label for="referencia">Referencia <span class="obligatorio">*</span></label>
                     <input 
                         type="text" 
@@ -507,6 +589,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         maxlength="100"
                         style="text-transform: uppercase;"
                     >
+                </div>
+                
+                <!-- ============================================ -->
+                <!-- SECCIÓN 2: Modalidad y kilometraje -->
+                <!-- ============================================ -->
+                <div class="form-separador">
+                    <i class="fas fa-tag"></i>
+                    Modalidad y kilometraje
+                </div>
+                
+                <div class="form-campo">
+                    <label for="modalidad_vehiculo">Modalidad <span class="obligatorio">*</span></label>
+                    <select name="modalidad_vehiculo" id="modalidad_vehiculo" required onchange="actualizarKilometraje()">
+                        <option value="">Selecciona...</option>
+                        <option value="NUEVO" <?php echo $valores['modalidad_vehiculo'] === 'NUEVO' ? 'selected' : ''; ?>>
+                            🆕 NUEVO
+                        </option>
+                        <option value="TEST_DRIVE" <?php echo $valores['modalidad_vehiculo'] === 'TEST_DRIVE' ? 'selected' : ''; ?>>
+                            🚗 TEST DRIVE
+                        </option>
+                        <option value="USADO" <?php echo $valores['modalidad_vehiculo'] === 'USADO' ? 'selected' : ''; ?>>
+                            🔄 USADO
+                        </option>
+                        <option value="PROPIO" <?php echo $valores['modalidad_vehiculo'] === 'PROPIO' ? 'selected' : ''; ?>>
+                            👤 PROPIO (empleado)
+                        </option>
+                    </select>
                 </div>
                 
                 <div class="form-campo">
@@ -525,6 +634,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="aviso-km" id="avisoKm"></div>
                 </div>
                 
+                <!-- ============================================ -->
+                <!-- SECCIÓN 3: Fecha de matrícula -->
+                <!-- ============================================ -->
+                <div class="form-separador">
+                    <i class="fas fa-calendar"></i>
+                    Fecha de matrícula
+                </div>
+                
                 <div class="form-campo full-width">
                     <label for="fecha_matricula">Fecha de matrícula <span class="obligatorio">*</span></label>
                     <input 
@@ -536,6 +653,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         max="<?php echo date('Y-m-d'); ?>"
                     >
                     <small>Si el VH tiene 5 años o más, la Tecnomecánica será obligatoria</small>
+                </div>
+                
+                <!-- ============================================ -->
+                <!-- SECCIÓN 4: Mantenimiento (NUEVO) -->
+                <!-- ============================================ -->
+                <div class="form-separador">
+                    <i class="fas fa-tools"></i>
+                    Mantenimiento
+                </div>
+                
+                <div class="form-campo full-width">
+                    <label for="fecha_ultimo_mantenimiento">Fecha del último mantenimiento <span class="obligatorio">*</span></label>
+                    <input 
+                        type="date" 
+                        name="fecha_ultimo_mantenimiento" 
+                        id="fecha_ultimo_mantenimiento" 
+                        value="<?php echo htmlspecialchars($valores['fecha_ultimo_mantenimiento']); ?>"
+                        required
+                        max="<?php echo date('Y-m-d'); ?>"
+                        onchange="actualizarVistaMantenimiento()"
+                    >
+                    <small>Se debe renovar cada 6 meses. Si vence, el vehículo no podrá viajar.</small>
+                    <div class="aviso-mantenimiento" id="avisoMantenimiento"></div>
                 </div>
                 
             </div>
@@ -555,26 +695,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
     // ============================================
-    // ACTUALIZAR EL CAMPO KILOMETRAJE SEGÚN EL TIPO
+    // ACTUALIZAR EL CAMPO KILOMETRAJE SEGÚN LA MODALIDAD
     // ============================================
     function actualizarKilometraje() {
-        const tipo = document.getElementById('tipo').value;
+        const modalidad = document.getElementById('modalidad_vehiculo').value;
         const kmInput = document.getElementById('kilometraje');
         const aviso = document.getElementById('avisoKm');
         
-        // Resetear clases
         aviso.classList.remove('visible', 'info', 'warning');
         aviso.innerHTML = '';
         
-        if (tipo === 'NUEVO') {
-            // KM debe ser 0
+        if (modalidad === 'NUEVO') {
             kmInput.value = 0;
             kmInput.disabled = true;
             aviso.innerHTML = '<i class="fas fa-info-circle"></i> Un vehículo NUEVO debe tener kilometraje 0';
             aviso.classList.add('visible', 'info');
         } 
-        else if (tipo === 'TEST_DRIVE' || tipo === 'USADO' || tipo === 'PROPIO') {
-            // KM debe ser > 0
+        else if (modalidad === 'TEST_DRIVE' || modalidad === 'USADO' || modalidad === 'PROPIO') {
             kmInput.disabled = false;
             if (kmInput.value == 0 || kmInput.value === '') {
                 kmInput.value = '';
@@ -583,42 +720,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             aviso.classList.add('visible', 'warning');
         } 
         else {
-            // Sin tipo seleccionado
             kmInput.disabled = false;
         }
     }
     
     // ============================================
-    // VALIDACIÓN AL ENVIAR EL FORMULARIO
+    // ✅ NUEVO: VISTA PREVIA DEL MANTENIMIENTO
+    // Calcula +6 meses y muestra estado en vivo
+    // ============================================
+    function actualizarVistaMantenimiento() {
+        const input = document.getElementById('fecha_ultimo_mantenimiento');
+        const aviso = document.getElementById('avisoMantenimiento');
+        
+        aviso.classList.remove('visible', 'ok', 'proximo', 'vencido');
+        aviso.innerHTML = '';
+        
+        if (!input.value) return;
+        
+        const fechaMant = new Date(input.value + 'T00:00:00');
+        const proximo = new Date(fechaMant);
+        proximo.setMonth(proximo.getMonth() + 6);
+        
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        const diffMs = proximo - hoy;
+        const diasRestantes = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
+        const fechaProxStr = proximo.toLocaleDateString('es-CO', {
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+        
+        let clase, icono, mensaje;
+        
+        if (diasRestantes < 0) {
+            clase = 'vencido';
+            icono = 'fa-times-circle';
+            mensaje = `<strong>VENCIDO hace ${Math.abs(diasRestantes)} días.</strong> El vehículo NO podrá viajar hasta que se actualice el mantenimiento.`;
+        } 
+        else if (diasRestantes <= 15) {
+            clase = 'proximo';
+            icono = 'fa-exclamation-triangle';
+            mensaje = `<strong>Próximo mantenimiento: ${fechaProxStr}</strong> — vence en ${diasRestantes} días. Avisar con anticipación.`;
+        } 
+        else {
+            clase = 'ok';
+            icono = 'fa-check-circle';
+            mensaje = `<strong>Próximo mantenimiento: ${fechaProxStr}</strong> — al día (${diasRestantes} días restantes).`;
+        }
+        
+        aviso.innerHTML = `<i class="fas ${icono}"></i><div>${mensaje}</div>`;
+        aviso.classList.add('visible', clase);
+    }
+    
+    // ============================================
+    // VALIDACIÓN AL ENVIAR
     // ============================================
     document.getElementById('formVehiculo').addEventListener('submit', function(e) {
-        const tipo = document.getElementById('tipo').value;
+        const modalidad = document.getElementById('modalidad_vehiculo').value;
         const km = parseInt(document.getElementById('kilometraje').value) || 0;
         
-        if (tipo === 'NUEVO' && km !== 0) {
+        if (modalidad === 'NUEVO' && km !== 0) {
             e.preventDefault();
             alert('❌ Un vehículo NUEVO debe tener kilometraje 0');
             return false;
         }
         
-        if ((tipo === 'TEST_DRIVE' || tipo === 'USADO' || tipo === 'PROPIO') && km <= 0) {
+        if ((modalidad === 'TEST_DRIVE' || modalidad === 'USADO' || modalidad === 'PROPIO') && km <= 0) {
             e.preventDefault();
-            alert('❌ Un vehículo ' + tipo + ' debe tener kilometraje mayor a 0');
+            alert('❌ Un vehículo ' + modalidad + ' debe tener kilometraje mayor a 0');
             return false;
         }
     });
     
     // ============================================
-    // INICIALIZAR AL CARGAR LA PÁGINA
+    // INICIALIZAR
     // ============================================
     document.addEventListener('DOMContentLoaded', function() {
-        // Si ya hay un tipo seleccionado (al volver de "Cancelar"), aplicar lógica
-        if (document.getElementById('tipo').value) {
+        if (document.getElementById('modalidad_vehiculo').value) {
             actualizarKilometraje();
-            // Restaurar el valor de KM que venía de la sesión
             <?php if (!empty($valores['kilometraje'])): ?>
                 document.getElementById('kilometraje').value = <?php echo intval($valores['kilometraje']); ?>;
             <?php endif; ?>
+        }
+        
+        // ✅ NUEVO: Si ya hay fecha de mantenimiento precargada, mostrar vista previa
+        if (document.getElementById('fecha_ultimo_mantenimiento').value) {
+            actualizarVistaMantenimiento();
         }
     });
 </script>

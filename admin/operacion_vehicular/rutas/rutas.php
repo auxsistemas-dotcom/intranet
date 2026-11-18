@@ -1,5 +1,5 @@
 <?php
-// admin/operacion_vehicular/rutas.php - Admin ve todas las rutas
+// admin/operacion_vehicular/rutas/rutas.php - Admin ve todas las rutas
 require_once '../../../includes/config.php';
 require_once '../../../includes/auth_check.php';
 
@@ -102,14 +102,17 @@ $total_paginas = ceil($total_registros / $registros_por_pagina);
 
 // ============================================
 // ✅ OBTENER RUTAS CON PAGINACIÓN
-// ✅ CORREGIDO: Todo con parámetros POSICIONALES (?) para evitar HY093
+// ✅ CORREGIDO: tipo_vehiculo + modalidad_vehiculo + km_salida + km_llegada
 // ============================================
 $sql = "
     SELECT 
         r.id, r.fecha_salida, r.fecha_regreso, r.fecha_finalizacion,
         r.ciudad_origen, r.ciudad_destino, r.estado, r.motivo_viaje,
         r.observaciones_cierre,
-        v.placa, v.marca, v.modelo, v.tipo AS tipo_vh,
+        r.km_salida, r.km_llegada,
+        v.placa, v.marca, v.modelo, 
+        v.tipo_vehiculo AS tipo_vh,
+        v.modalidad_vehiculo AS modalidad_vh,
         u.nombre_completo AS conductor_nombre,
         u.usuario AS conductor_usuario,
         u.cargo AS conductor_cargo,
@@ -161,12 +164,11 @@ $stmt = $pdo->query("
 ");
 $conductores_lista = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Vehículos
+// Vehículos (activos e inactivos, para no perder historial)
 $stmt = $pdo->query("
-    SELECT id, placa, marca, modelo
+    SELECT id, placa, marca, modelo, activo
     FROM ope_vehiculos
-    WHERE activo = 1
-    ORDER BY placa ASC
+    ORDER BY activo DESC, placa ASC
 ");
 $vehiculos_lista = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -208,13 +210,23 @@ function badgeEstado($estado) {
     return $mapa[$estado] ?? ['clase' => 'sin-datos', 'texto' => $estado];
 }
 
-function badgeTipo($tipo) {
+function badgeTipoVehiculo($tipo) {
+    $mapa = [
+        'CARRO' => ['clase' => 'carro', 'texto' => '🚗 CARRO'],
+        'MOTO' => ['clase' => 'moto', 'texto' => '🏍️ MOTO'],
+        'CAMION' => ['clase' => 'camion', 'texto' => '🚚 CAMIÓN']
+    ];
+    return $mapa[$tipo] ?? ['clase' => 'sin-datos', 'texto' => $tipo ?? '—'];
+}
+
+function badgeModalidad($modalidad) {
     $mapa = [
         'NUEVO' => ['clase' => 'nuevo', 'texto' => 'NUEVO'],
         'TEST_DRIVE' => ['clase' => 'test', 'texto' => 'TEST DRIVE'],
-        'USADO' => ['clase' => 'usado', 'texto' => 'USADO']
+        'USADO' => ['clase' => 'usado', 'texto' => 'USADO'],
+        'PROPIO' => ['clase' => 'propio', 'texto' => 'PROPIO']
     ];
-    return $mapa[$tipo] ?? ['clase' => 'sin-datos', 'texto' => $tipo];
+    return $mapa[$modalidad] ?? ['clase' => 'sin-datos', 'texto' => $modalidad ?? '—'];
 }
 ?>
 <!DOCTYPE html>
@@ -283,24 +295,6 @@ function badgeTipo($tipo) {
         .btn-volver:hover {
             background: #ffc107;
             color: #12232b;
-            transform: translateY(-2px);
-        }
-        
-        .btn-nuevo {
-            background: #27ae60;
-            color: white;
-            padding: 8px 16px;
-            text-decoration: none;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            font-size: 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .btn-nuevo:hover {
-            background: #219a52;
             transform: translateY(-2px);
         }
         
@@ -540,6 +534,7 @@ function badgeTipo($tipo) {
             color: #12232b;
             font-size: 14px;
             letter-spacing: 0.5px;
+            display: block;
         }
         
         .celda-conductor {
@@ -612,6 +607,50 @@ function badgeTipo($tipo) {
             margin-top: 3px;
         }
         
+        /* ========== CELDA KM ========== */
+        .celda-km {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            font-size: 11px;
+        }
+        
+        .celda-km .km-linea {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #7f8c8d;
+        }
+        
+        .celda-km .km-linea i {
+            font-size: 10px;
+            width: 12px;
+        }
+        
+        .celda-km .km-linea strong {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .km-recorrido {
+            background: #d5f5e3;
+            color: #1a7a3a;
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 3px;
+        }
+        
+        .km-sin-datos {
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 11px;
+        }
+        
         /* ========== BADGES ========== */
         .badge-estado {
             display: inline-flex;
@@ -634,14 +673,32 @@ function badgeTipo($tipo) {
             border-radius: 8px;
             font-size: 9px;
             font-weight: 700;
-            margin-left: 6px;
-            letter-spacing: 0.5px;
+            margin-top: 4px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
         }
         
-        .badge-tipo.nuevo { background: #27ae60; color: white; }
-        .badge-tipo.test { background: #8e44ad; color: white; }
-        .badge-tipo.usado { background: #3498db; color: white; }
+        .badge-tipo.carro { background: #173742; color: white; }
+        .badge-tipo.moto { background: #e67e22; color: white; }
+        .badge-tipo.camion { background: #8e44ad; color: white; }
         .badge-tipo.sin-datos { background: #bdc3c7; color: white; }
+        
+        .badge-modalidad {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: 700;
+            margin-top: 2px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        
+        .badge-modalidad.nuevo { background: #27ae60; color: white; }
+        .badge-modalidad.test { background: #8e44ad; color: white; }
+        .badge-modalidad.usado { background: #3498db; color: white; }
+        .badge-modalidad.propio { background: #16a085; color: white; }
+        .badge-modalidad.sin-datos { background: #bdc3c7; color: white; }
         
         /* ========== BOTÓN VER ========== */
         .btn-ver {
@@ -869,6 +926,7 @@ function badgeTipo($tipo) {
                         <?php foreach ($vehiculos_lista as $v): ?>
                             <option value="<?php echo $v['id']; ?>" <?php echo $filtro_vehiculo == $v['id'] ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($v['placa']); ?> - <?php echo htmlspecialchars($v['marca']); ?>
+                                <?php echo ((int)$v['activo'] === 0) ? ' (INACTIVO)' : ''; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -911,6 +969,7 @@ function badgeTipo($tipo) {
                             <th>Conductor</th>
                             <th>Ruta</th>
                             <th>Fechas</th>
+                            <th>Km</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
@@ -918,10 +977,20 @@ function badgeTipo($tipo) {
                     <tbody>
                         <?php foreach ($rutas as $ruta): 
                             $estado_info = badgeEstado($ruta['estado']);
-                            $tipo_info = badgeTipo($ruta['tipo_vh'] ?? null);
+                            $tipo_info = badgeTipoVehiculo($ruta['tipo_vh'] ?? null);
+                            $modalidad_info = badgeModalidad($ruta['modalidad_vh'] ?? null);
+                            
                             $duracion = null;
                             if ($ruta['estado'] === 'FINALIZADO' && !empty($ruta['fecha_finalizacion'])) {
                                 $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion']);
+                            }
+                            
+                            // Calcular km recorridos
+                            $km_salida = !empty($ruta['km_salida']) ? (int)$ruta['km_salida'] : null;
+                            $km_llegada = !empty($ruta['km_llegada']) ? (int)$ruta['km_llegada'] : null;
+                            $km_recorridos = null;
+                            if ($km_salida !== null && $km_llegada !== null) {
+                                $km_recorridos = $km_llegada - $km_salida;
                             }
                         ?>
                             <tr>
@@ -930,6 +999,11 @@ function badgeTipo($tipo) {
                                     <span class="badge-tipo <?php echo $tipo_info['clase']; ?>">
                                         <?php echo $tipo_info['texto']; ?>
                                     </span>
+                                    <?php if (!empty($ruta['modalidad_vh'])): ?>
+                                        <span class="badge-modalidad <?php echo $modalidad_info['clase']; ?>">
+                                            <?php echo $modalidad_info['texto']; ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 
                                 <td>
@@ -977,6 +1051,36 @@ function badgeTipo($tipo) {
                                             </span>
                                         <?php endif; ?>
                                     </div>
+                                </td>
+                                
+                                <!-- ✅ NUEVA COLUMNA: KM -->
+                                <td>
+                                    <?php if ($km_salida !== null || $km_llegada !== null): ?>
+                                        <div class="celda-km">
+                                            <?php if ($km_salida !== null): ?>
+                                                <span class="km-linea">
+                                                    <i class="fas fa-sign-out-alt"></i>
+                                                    <strong>Salida:</strong>
+                                                    <?php echo number_format($km_salida, 0, ',', '.'); ?>
+                                                </span>
+                                            <?php endif; ?>
+                                            <?php if ($km_llegada !== null): ?>
+                                                <span class="km-linea">
+                                                    <i class="fas fa-sign-in-alt"></i>
+                                                    <strong>Llegada:</strong>
+                                                    <?php echo number_format($km_llegada, 0, ',', '.'); ?>
+                                                </span>
+                                            <?php endif; ?>
+                                            <?php if ($km_recorridos !== null && $km_recorridos >= 0): ?>
+                                                <span class="km-recorrido">
+                                                    <i class="fas fa-road"></i>
+                                                    <?php echo number_format($km_recorridos, 0, ',', '.'); ?> km
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="km-sin-datos">—</span>
+                                    <?php endif; ?>
                                 </td>
                                 
                                 <td>

@@ -29,7 +29,11 @@ if (session_status() === PHP_SESSION_NONE) {
         ini_set('session.cookie_secure', 1);
     }
     ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_samesite', 'Strict');
+    
+    // ✅ CLAVE: Lax permite links desde correos, WhatsApp, etc.
+    //    Sin esto (Strict) los links del correo NO comparten sesión.
+    ini_set('session.cookie_samesite', 'Lax');
+    
     ini_set('session.use_strict_mode', 1);
     ini_set('session.use_only_cookies', 1);
     ini_set('session.sid_length', 64);

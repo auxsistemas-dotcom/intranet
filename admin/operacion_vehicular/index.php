@@ -17,7 +17,7 @@ if ($rol_usuario != 1 && $rol_usuario != 2) {
 }
 
 // ============================================
-// ✅ PROCESAR ELIMINAR
+// ✅ PROCESAR ELIMINAR CONDUCTOR (sí se permite)
 // ============================================
 if (isset($_GET['eliminar_conductor']) && is_numeric($_GET['eliminar_conductor'])) {
     $id = (int) $_GET['eliminar_conductor'];
@@ -26,17 +26,6 @@ if (isset($_GET['eliminar_conductor']) && is_numeric($_GET['eliminar_conductor']
     $stmt->execute([$id]);
     
     $_SESSION['mensaje'] = "✅ Conductor eliminado correctamente";
-    header('Location: index.php');
-    exit();
-}
-
-if (isset($_GET['eliminar_vehiculo']) && is_numeric($_GET['eliminar_vehiculo'])) {
-    $id = (int) $_GET['eliminar_vehiculo'];
-    
-    $stmt = $pdo->prepare("DELETE FROM ope_vehiculos WHERE id = ?");
-    $stmt->execute([$id]);
-    
-    $_SESSION['mensaje'] = "✅ Vehículo eliminado correctamente";
     header('Location: index.php');
     exit();
 }
@@ -51,10 +40,16 @@ if (isset($_SESSION['mensaje'])) {
 // ✅ BÚSQUEDAS (GET)
 // ============================================
 $buscar_conductor = isset($_GET['buscar_conductor']) ? trim($_GET['buscar_conductor']) : '';
-$buscar_vehiculo = isset($_GET['buscar_vehiculo']) ? trim($_GET['buscar_vehiculo']) : '';
+$buscar_vehiculo  = isset($_GET['buscar_vehiculo'])  ? trim($_GET['buscar_vehiculo'])  : '';
+$filtro_estado_vh = isset($_GET['estado_vehiculo'])  ? $_GET['estado_vehiculo']         : 'activos';
+
+// Validar filtro de estado
+if (!in_array($filtro_estado_vh, ['activos', 'inactivos', 'todos'])) {
+    $filtro_estado_vh = 'activos';
+}
 
 // ============================================
-// ✅ KPIs
+// ✅ KPIs (SIEMPRE ACTIVOS)
 // ============================================
 $stmt = $pdo->query("SELECT COUNT(*) FROM ope_conductores WHERE activo = 1");
 $total_conductores = $stmt->fetchColumn();
@@ -76,8 +71,20 @@ $stmt = $pdo->query("
 ");
 $total_documentos_alerta = $stmt->fetchColumn();
 
+// ✅ NUEVO KPI: Vehículos con mantenimiento vencido
+// = fecha_ultimo_mantenimiento + 6 meses < HOY (o NULL = sin registro)
+$stmt = $pdo->query("
+    SELECT COUNT(*) FROM ope_vehiculos 
+    WHERE activo = 1 
+      AND (
+            fecha_ultimo_mantenimiento IS NULL 
+            OR DATE_ADD(fecha_ultimo_mantenimiento, INTERVAL 6 MONTH) < CURDATE()
+      )
+");
+$total_mantenimiento_vencido = $stmt->fetchColumn();
+
 // ============================================
-// ✅ CONSULTAS: Conductores (con búsqueda por nombre)
+// ✅ CONSULTAS: Conductores (solo activos + búsqueda por nombre)
 // ============================================
 if (!empty($buscar_conductor)) {
     $sql = "
@@ -116,26 +123,38 @@ foreach ($conductores_raw as $c) {
 }
 
 // ============================================
-// ✅ CONSULTAS: Vehículos (con búsqueda por placa)
+// ✅ CONSULTAS: Vehículos (con filtro de estado + búsqueda por placa)
 // ============================================
-if (!empty($buscar_vehiculo)) {
-    $sql = "
-        SELECT v.id, v.placa, v.marca, v.modelo, v.referencia
-        FROM ope_vehiculos v
-        WHERE v.activo = 1
-          AND v.placa LIKE :busqueda
-        ORDER BY v.placa ASC
-    ";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute(['busqueda' => '%' . strtoupper($buscar_vehiculo) . '%']);
-} else {
-    $stmt = $pdo->query("
-        SELECT v.id, v.placa, v.marca, v.modelo, v.referencia
-        FROM ope_vehiculos v
-        WHERE v.activo = 1
-        ORDER BY v.placa ASC
-    ");
+$where_vh = [];
+$params_vh = [];
+
+// Filtro de estado
+if ($filtro_estado_vh === 'activos') {
+    $where_vh[] = "v.activo = 1";
+} elseif ($filtro_estado_vh === 'inactivos') {
+    $where_vh[] = "v.activo = 0";
 }
+// 'todos' → sin filtro
+
+// Búsqueda por placa
+if (!empty($buscar_vehiculo)) {
+    $where_vh[] = "v.placa LIKE :busqueda";
+    $params_vh['busqueda'] = '%' . strtoupper($buscar_vehiculo) . '%';
+}
+
+$where_vh_sql = !empty($where_vh) ? 'WHERE ' . implode(' AND ', $where_vh) : '';
+
+$sql = "
+    SELECT v.id, v.placa, v.marca, v.modelo, v.referencia, 
+           v.tipo_vehiculo, v.modalidad_vehiculo, v.activo,
+           v.fecha_ultimo_mantenimiento
+    FROM ope_vehiculos v
+    $where_vh_sql
+    ORDER BY v.activo DESC, v.placa ASC
+";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params_vh);
 $vehiculos_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $vehiculos = [];
@@ -207,6 +226,69 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
         'clase' => 'vigente', 
         'texto' => '🟢 Vence el ' . date('d/m/Y', strtotime($primera['fecha_vencimiento']))
     ];
+}
+
+// ============================================
+// ✅ NUEVA FUNCIÓN: Estado del mantenimiento
+// Regla: cada 6 meses desde fecha_ultimo_mantenimiento
+// ============================================
+function calcularEstadoMantenimiento($fecha_ultimo_mantenimiento) {
+    if (empty($fecha_ultimo_mantenimiento)) {
+        return ['clase' => 'sin-datos', 'texto' => '⚪ Sin mantenimiento', 'dias' => null];
+    }
+    
+    $hoy = new DateTime();
+    $hoy->setTime(0, 0, 0);
+    
+    $ultimo = new DateTime($fecha_ultimo_mantenimiento);
+    $proximo = clone $ultimo;
+    $proximo->modify('+6 months');
+    $proximo->setTime(0, 0, 0);
+    
+    $dias = (int) $hoy->diff($proximo)->format('%r%a');
+    
+    if ($dias < 0) {
+        return [
+            'clase' => 'vencido',
+            'texto' => '🔧 Mantenimiento VENCIDO hace ' . abs($dias) . ' días',
+            'dias' => $dias
+        ];
+    }
+    
+    if ($dias <= 15) {
+        return [
+            'clase' => 'proximo',
+            'texto' => '🔧 Mantenimiento vence en ' . $dias . ' días',
+            'dias' => $dias
+        ];
+    }
+    
+    return [
+        'clase' => 'ok',
+        'texto' => '🔧 Mantenimiento al día (' . $dias . ' días)',
+        'dias' => $dias
+    ];
+}
+
+// Helper: etiqueta de tipo de vehículo
+function etiquetaTipoVh($tipo) {
+    $mapa = [
+        'CARRO' => '🚗 Carro',
+        'MOTO' => '🏍️ Moto',
+        'CAMION' => '🚚 Camión'
+    ];
+    return $mapa[$tipo] ?? $tipo;
+}
+
+// Helper: etiqueta de modalidad
+function etiquetaModalidadVh($modalidad) {
+    $mapa = [
+        'NUEVO' => 'NUEVO',
+        'TEST_DRIVE' => 'TEST DRIVE',
+        'USADO' => 'USADO',
+        'PROPIO' => 'PROPIO'
+    ];
+    return $mapa[$modalidad] ?? $modalidad;
 }
 ?>
 <!DOCTYPE html>
@@ -342,6 +424,7 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
         
         .kpi-icon.success { background: #27ae60; }
         .kpi-icon.danger { background: #e74c3c; }
+        .kpi-icon.warning { background: #f39c12; }
         
         .kpi-info h3 {
             font-size: 26px;
@@ -536,6 +619,30 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
             transform: translateY(-2px);
         }
         
+        /* ========== SELECT FILTRO ESTADO ========== */
+        .filtro-estado-select {
+            padding: 10px 14px;
+            border: 2px solid #d3d3d3;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 13px;
+            background: white;
+            color: #2c3e50;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .filtro-estado-select:focus {
+            outline: none;
+            border-color: #173742;
+            box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+        }
+        
+        .filtro-estado-select:hover {
+            border-color: #b0b8bc;
+        }
+        
         .info-busqueda {
             background: #e8f4f8;
             border-left: 3px solid #3498db;
@@ -606,6 +713,16 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
         .item-card.vencido { border-left-color: #e74c3c; }
         .item-card.sin-datos { border-left-color: #bdc3c7; }
         
+        /* ✅ Inactivo: opacidad reducida */
+        .item-card.inactivo {
+            opacity: 0.65;
+            background: #f0f0f0;
+        }
+        
+        .item-card.inactivo:hover {
+            opacity: 0.85;
+        }
+        
         .item-info { flex: 1; min-width: 0; }
         
         .item-titulo {
@@ -616,6 +733,10 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
         }
         
         .item-subtitulo {
@@ -625,6 +746,16 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+        
+        .badge-inactivo {
+            background: #95a5a6;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
         
         .item-estado {
@@ -639,6 +770,22 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
         .item-estado.por-vencer { background: #fdebd0; color: #a04000; }
         .item-estado.vencido { background: #fadbd8; color: #922b21; }
         .item-estado.sin-datos { background: #ecf0f1; color: #7f8c8d; }
+        
+        /* ✅ NUEVO: Badge de mantenimiento */
+        .item-mantenimiento {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 4px;
+            margin-left: 4px;
+        }
+        
+        .item-mantenimiento.ok { background: #d5f5e3; color: #1a7a3a; }
+        .item-mantenimiento.proximo { background: #fdebd0; color: #a04000; }
+        .item-mantenimiento.vencido { background: #fadbd8; color: #922b21; }
+        .item-mantenimiento.sin-datos { background: #ecf0f1; color: #7f8c8d; }
         
         .item-acciones {
             display: flex;
@@ -680,7 +827,7 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
         
         .empty-state p { font-size: 13px; margin-bottom: 15px; }
         
-        /* ========== MODAL ========== */
+        /* ========== MODAL ELIMINAR CONDUCTOR ========== */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0;
@@ -867,6 +1014,17 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                 <p>Documentos VH por vencer</p>
             </div>
         </div>
+        
+        <!-- ✅ NUEVO KPI: Mantenimiento vencido -->
+        <div class="kpi-card">
+            <div class="kpi-icon warning">
+                <i class="fas fa-tools"></i>
+            </div>
+            <div class="kpi-info">
+                <h3><?php echo $total_mantenimiento_vencido; ?></h3>
+                <p>Mantenimiento vencido</p>
+            </div>
+        </div>
     </div>
     
     <!-- ===== DASHBOARD ===== -->
@@ -894,7 +1052,6 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                 </div>
             </div>
             
-            <!-- Barra de búsqueda conductor -->
             <div class="buscador-wrapper <?php echo !empty($buscar_conductor) ? 'abierto' : ''; ?>" id="buscadorConductor">
                 <form method="GET" action="" class="buscador-form">
                     <div class="buscador-input-wrapper">
@@ -966,8 +1123,7 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                                     type="button" 
                                     class="btn-mini eliminar" 
                                     title="Eliminar conductor"
-                                    onclick="abrirModal(
-                                        'conductor',
+                                    onclick="abrirModalConductor(
                                         <?php echo $c['id']; ?>,
                                         '<?php echo htmlspecialchars(addslashes($c['nombre_completo'])); ?>'
                                     )"
@@ -1007,7 +1163,7 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                 <div class="header-right">
                     <button 
                         type="button" 
-                        class="btn-buscar-toggle <?php echo !empty($buscar_vehiculo) ? 'activo' : ''; ?>" 
+                        class="btn-buscar-toggle <?php echo (!empty($buscar_vehiculo) || $filtro_estado_vh !== 'activos') ? 'activo' : ''; ?>" 
                         onclick="toggleBusqueda('vehiculo')"
                         title="Buscar vehículos"
                     >
@@ -1016,9 +1172,8 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                 </div>
             </div>
             
-            <!-- Barra de búsqueda vehículo -->
-            <div class="buscador-wrapper <?php echo !empty($buscar_vehiculo) ? 'abierto' : ''; ?>" id="buscadorVehiculo">
-                <form method="GET" action="" class="buscador-form">
+            <div class="buscador-wrapper <?php echo (!empty($buscar_vehiculo) || $filtro_estado_vh !== 'activos') ? 'abierto' : ''; ?>" id="buscadorVehiculo">
+                <form method="GET" action="" class="buscador-form" id="formBusquedaVehiculo">
                     <div class="buscador-input-wrapper">
                         <i class="fas fa-search"></i>
                         <input 
@@ -1031,22 +1186,48 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                             style="text-transform: uppercase;"
                         >
                     </div>
+                    
+                    <select 
+                        name="estado_vehiculo" 
+                        class="filtro-estado-select"
+                        onchange="document.getElementById('formBusquedaVehiculo').submit();"
+                        title="Filtrar por estado"
+                    >
+                        <option value="activos" <?php echo $filtro_estado_vh === 'activos' ? 'selected' : ''; ?>>
+                            ✅ Activos
+                        </option>
+                        <option value="inactivos" <?php echo $filtro_estado_vh === 'inactivos' ? 'selected' : ''; ?>>
+                            ⛔ Inactivos
+                        </option>
+                        <option value="todos" <?php echo $filtro_estado_vh === 'todos' ? 'selected' : ''; ?>>
+                            📋 Todos
+                        </option>
+                    </select>
+                    
                     <button type="submit" class="btn-buscar-accion">
                         Buscar
                     </button>
-                    <?php if (!empty($buscar_vehiculo)): ?>
-                        <a href="index.php" class="btn-limpiar-busqueda">
+                    <?php if (!empty($buscar_vehiculo) || $filtro_estado_vh !== 'activos'): ?>
+                        <a href="index.php" class="btn-limpiar-busqueda" title="Limpiar filtros">
                             <i class="fas fa-times"></i>
                         </a>
                     <?php endif; ?>
                 </form>
             </div>
             
-            <?php if (!empty($buscar_vehiculo)): ?>
+            <?php if (!empty($buscar_vehiculo) || $filtro_estado_vh !== 'activos'): ?>
                 <div class="info-busqueda">
                     <span>
-                        <i class="fas fa-search"></i> 
-                        Resultados para: <strong>"<?php echo htmlspecialchars($buscar_vehiculo); ?>"</strong>
+                        <i class="fas fa-filter"></i> 
+                        <?php if (!empty($buscar_vehiculo)): ?>
+                            Placa: <strong>"<?php echo htmlspecialchars($buscar_vehiculo); ?>"</strong>
+                        <?php endif; ?>
+                        <?php if (!empty($buscar_vehiculo) && $filtro_estado_vh !== 'activos'): ?>
+                            · 
+                        <?php endif; ?>
+                        <?php if ($filtro_estado_vh !== 'activos'): ?>
+                            Estado: <strong><?php echo ucfirst($filtro_estado_vh); ?></strong>
+                        <?php endif; ?>
                     </span>
                     <a href="index.php" style="color: #3498db; text-decoration: none; font-weight: 500;">
                         <i class="fas fa-times-circle"></i> Limpiar
@@ -1062,44 +1243,44 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
                 <div class="lista-cards">
                     <?php foreach ($vehiculos as $v): 
                         $estado = calcularEstadoVencimiento($v['documentos'], 'tipo_documento');
+                        $es_inactivo = ((int)$v['activo'] === 0);
+                        $mantenimiento = calcularEstadoMantenimiento($v['fecha_ultimo_mantenimiento'] ?? null);
                     ?>
-                        <div class="item-card <?php echo $estado['clase']; ?>">
+                        <div class="item-card <?php echo $es_inactivo ? 'inactivo' : $estado['clase']; ?>">
                             <div class="item-info">
                                 <div class="item-titulo">
                                     <?php echo htmlspecialchars($v['placa']); ?>
+                                    <?php if ($es_inactivo): ?>
+                                        <span class="badge-inactivo">INACTIVO</span>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="item-subtitulo">
-                                    <?php echo htmlspecialchars($v['marca'] ?? ''); ?>
+                                    <?php echo htmlspecialchars(etiquetaTipoVh($v['tipo_vehiculo'] ?? '')); ?>
+                                    · <?php echo htmlspecialchars($v['marca'] ?? ''); ?>
                                     <?php if (!empty($v['modelo'])): ?>
                                         <?php echo htmlspecialchars($v['modelo']); ?>
                                     <?php endif; ?>
                                     <?php if (!empty($v['referencia'])): ?>
                                         • <?php echo htmlspecialchars($v['referencia']); ?>
                                     <?php endif; ?>
+                                    <?php if (!empty($v['modalidad_vehiculo'])): ?>
+                                        · <strong><?php echo htmlspecialchars(etiquetaModalidadVh($v['modalidad_vehiculo'])); ?></strong>
+                                    <?php endif; ?>
                                 </div>
                                 <span class="item-estado <?php echo $estado['clase']; ?>">
                                     <?php echo htmlspecialchars($estado['texto']); ?>
+                                </span>
+                                <span class="item-mantenimiento <?php echo $mantenimiento['clase']; ?>">
+                                    <?php echo htmlspecialchars($mantenimiento['texto']); ?>
                                 </span>
                             </div>
                             <div class="item-acciones">
                                 <a href="vehiculos/ver.php?id=<?php echo $v['id']; ?>" class="btn-mini ver" title="Ver detalle">
                                     <i class="fas fa-eye"></i>
                                 </a>
-                                <a href="vehiculos/editar.php?id=<?php echo $v['id']; ?>" class="btn-mini editar" title="Editar">
+                                <a href="vehiculos/editar_vh.php?id=<?php echo $v['id']; ?>" class="btn-mini editar" title="Editar datos">
                                     <i class="fas fa-edit"></i>
                                 </a>
-                                <button 
-                                    type="button" 
-                                    class="btn-mini eliminar" 
-                                    title="Eliminar vehículo"
-                                    onclick="abrirModal(
-                                        'vehiculo',
-                                        <?php echo $v['id']; ?>,
-                                        '<?php echo htmlspecialchars(addslashes($v['placa'])); ?>'
-                                    )"
-                                >
-                                    <i class="fas fa-trash"></i>
-                                </button>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -1107,11 +1288,10 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
             <?php else: ?>
                 <div class="empty-state">
                     <i class="fas fa-car-side"></i>
-                    <?php if (!empty($buscar_vehiculo)): ?>
-                        <p>No se encontraron vehículos que coincidan con:</p>
-                        <p><strong>"<?php echo htmlspecialchars($buscar_vehiculo); ?>"</strong></p>
+                    <?php if (!empty($buscar_vehiculo) || $filtro_estado_vh !== 'activos'): ?>
+                        <p>No se encontraron vehículos con esos filtros</p>
                         <a href="index.php" class="btn-nuevo" style="margin-top: 10px;">
-                            <i class="fas fa-times"></i> Limpiar búsqueda
+                            <i class="fas fa-times"></i> Limpiar filtros
                         </a>
                     <?php else: ?>
                         <p>No hay vehículos registrados</p>
@@ -1123,29 +1303,29 @@ function calcularEstadoVencimiento($documentos, $campo_categoria = 'categoria') 
     </div>
 </div>
 
-<!-- MODAL -->
-<div class="modal-overlay" id="modalEliminar">
+<!-- MODAL ELIMINAR CONDUCTOR -->
+<div class="modal-overlay" id="modalEliminarConductor">
     <div class="modal-content">
         <div class="modal-icon">
             <i class="fas fa-trash-alt"></i>
         </div>
         
-        <h2 class="modal-title" id="modalTitulo">¿Eliminar?</h2>
+        <h2 class="modal-title">¿Eliminar conductor?</h2>
         
         <p class="modal-message">
-            Vas a eliminar <strong id="modalNombre"></strong>. Esta acción no se puede deshacer.
+            Vas a eliminar <strong id="modalNombreConductor"></strong>. Esta acción no se puede deshacer.
         </p>
         
-        <div class="modal-warning" id="modalAdvertencia">
+        <div class="modal-warning">
             <i class="fas fa-exclamation-triangle"></i>
-            <span id="modalTextoAdvertencia"></span>
+            <span>También se eliminarán todas sus licencias asociadas y sus rutas asignadas quedarán sin conductor.</span>
         </div>
         
         <div class="modal-acciones">
-            <button type="button" class="btn-modal btn-modal-cancelar" onclick="cerrarModal()">
+            <button type="button" class="btn-modal btn-modal-cancelar" onclick="cerrarModalConductor()">
                 <i class="fas fa-times"></i> Cancelar
             </button>
-            <a href="#" id="modalBtnEliminar" class="btn-modal btn-modal-eliminar">
+            <a href="#" id="modalBtnEliminarConductor" class="btn-modal btn-modal-eliminar">
                 <i class="fas fa-trash"></i> Eliminar
             </a>
         </div>
@@ -1162,14 +1342,8 @@ function toggleBusqueda(tipo) {
         const btn = document.querySelector('.btn-buscar-toggle');
         
         if (wrapper.classList.contains('abierto')) {
-            const input = wrapper.querySelector('input');
-            if (input.value.trim() === '') {
-                wrapper.classList.remove('abierto');
-                btn.classList.remove('activo');
-            } else {
-                wrapper.classList.remove('abierto');
-                btn.classList.remove('activo');
-            }
+            wrapper.classList.remove('abierto');
+            btn.classList.remove('activo');
         } else {
             wrapper.classList.add('abierto');
             btn.classList.add('activo');
@@ -1191,41 +1365,30 @@ function toggleBusqueda(tipo) {
 }
 
 // ============================================
-// MODAL DE ELIMINAR
+// MODAL ELIMINAR CONDUCTOR
 // ============================================
-function abrirModal(tipo, id, nombre) {
-    const modal = document.getElementById('modalEliminar');
-    const modalTitulo = document.getElementById('modalTitulo');
-    const modalNombre = document.getElementById('modalNombre');
-    const modalTextoAdvertencia = document.getElementById('modalTextoAdvertencia');
-    const modalBtnEliminar = document.getElementById('modalBtnEliminar');
+function abrirModalConductor(id, nombre) {
+    const modal = document.getElementById('modalEliminarConductor');
+    const modalNombre = document.getElementById('modalNombreConductor');
+    const modalBtnEliminar = document.getElementById('modalBtnEliminarConductor');
     
-    if (tipo === 'conductor') {
-        modalTitulo.textContent = '¿Eliminar conductor?';
-        modalNombre.textContent = nombre;
-        modalTextoAdvertencia.textContent = 'También se eliminarán todas sus licencias asociadas.';
-        modalBtnEliminar.href = '?eliminar_conductor=' + id;
-    } else if (tipo === 'vehiculo') {
-        modalTitulo.textContent = '¿Eliminar vehículo?';
-        modalNombre.textContent = nombre;
-        modalTextoAdvertencia.textContent = 'También se eliminarán todos sus documentos (SOAT, tecnomecánica, etc).';
-        modalBtnEliminar.href = '?eliminar_vehiculo=' + id;
-    }
+    modalNombre.textContent = nombre;
+    modalBtnEliminar.href = '?eliminar_conductor=' + id;
     
     modal.classList.add('active');
 }
 
-function cerrarModal() {
-    document.getElementById('modalEliminar').classList.remove('active');
+function cerrarModalConductor() {
+    document.getElementById('modalEliminarConductor').classList.remove('active');
 }
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') cerrarModal();
+    if (e.key === 'Escape') cerrarModalConductor();
 });
 
 document.addEventListener('click', function(e) {
-    const modal = document.getElementById('modalEliminar');
-    if (e.target === modal) cerrarModal();
+    const modal = document.getElementById('modalEliminarConductor');
+    if (e.target === modal) cerrarModalConductor();
 });
 
 // Auto-ocultar mensaje de éxito

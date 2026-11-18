@@ -41,15 +41,12 @@ if ($rol_usuario == 1) {
     $permiso = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (empty($permiso['tiene_permiso'])) {
-        // ❌ Supervisor SIN permiso PQRS → vista de gestor
         $_SESSION['error'] = "❌ No tienes permiso de supervisor para exportar estadísticas de PQRS.";
         header('Location: ../../aplicaciones/otros/pqrs/index.php');
         exit();
     }
-    // ✅ Supervisor CON permiso PQRS → acceso total
     
 } else {
-    // Usuario normal (rol 3) → vista de gestor
     header('Location: ../../aplicaciones/otros/pqrs/index.php');
     exit();
 }
@@ -284,7 +281,7 @@ $sheet->getColumnDimension('C')->setWidth(20);
 $sheet->getColumnDimension('D')->setWidth(20);
 
 // ============================================
-// HOJA 2: DETALLE
+// HOJA 2: DETALLE (sin 'autoriza_datos')
 // ============================================
 $sheet2 = $spreadsheet->createSheet();
 $sheet2->setTitle('Detalle');
@@ -303,7 +300,6 @@ $sql = "SELECT
             p.placa,
             p.asunto,
             p.descripcion,
-            p.autoriza_datos,
             u.nombre_completo AS gestor_nombre,
             COALESCE(p.marca_temporal, p.creado_el) AS fecha_creacion,
             p.fecha_cierre,
@@ -319,7 +315,7 @@ $detalle = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $headers = [
     'Código', 'Tipo', 'Estado', 'Prioridad', 'Cliente', 'Documento',
     'Email', 'Celular', 'Sede de Armotor', 'Marca VH', 'Placa',
-    'Asunto', 'Descripción', 'Autorizó datos',
+    'Asunto', 'Descripción',
     'Gestor principal', 'Fecha creación', 'Fecha cierre', 'Duración (días)'
 ];
 
@@ -328,7 +324,7 @@ foreach ($headers as $h) {
     $sheet2->setCellValue($col . '1', $h);
     $col++;
 }
-$sheet2->getStyle('A1:R1')->applyFromArray($estiloHeader);
+$sheet2->getStyle('A1:Q1')->applyFromArray($estiloHeader);
 $sheet2->getRowDimension(1)->setRowHeight(25);
 
 $row = 2;
@@ -346,28 +342,27 @@ foreach ($detalle as $d) {
     $sheet2->setCellValue('K' . $row, $d['placa']);
     $sheet2->setCellValue('L' . $row, $d['asunto']);
     $sheet2->setCellValue('M' . $row, $d['descripcion']);
-    $sheet2->setCellValue('N' . $row, $d['autoriza_datos'] ? 'Sí' : 'No');
-    $sheet2->setCellValue('O' . $row, $d['gestor_nombre'] ?? '—');
-    $sheet2->setCellValue('P' . $row, $d['fecha_creacion'] ? date('d/m/Y H:i', strtotime($d['fecha_creacion'])) : '');
-    $sheet2->setCellValue('Q' . $row, $d['fecha_cierre'] ? date('d/m/Y H:i', strtotime($d['fecha_cierre'])) : '');
-    $sheet2->setCellValue('R' . $row, $d['duracion_dias'] ?? '');
+    $sheet2->setCellValue('N' . $row, $d['gestor_nombre'] ?? '—');
+    $sheet2->setCellValue('O' . $row, $d['fecha_creacion'] ? date('d/m/Y H:i', strtotime($d['fecha_creacion'])) : '');
+    $sheet2->setCellValue('P' . $row, $d['fecha_cierre'] ? date('d/m/Y H:i', strtotime($d['fecha_cierre'])) : '');
+    $sheet2->setCellValue('Q' . $row, $d['duracion_dias'] ?? '');
 
-    $sheet2->getStyle('A' . $row . ':R' . $row)->applyFromArray($estiloCelda);
+    $sheet2->getStyle('A' . $row . ':Q' . $row)->applyFromArray($estiloCelda);
     $row++;
 }
 
 $anchos = [
     'A' => 18, 'B' => 15, 'C' => 20, 'D' => 12, 'E' => 25,
     'F' => 15, 'G' => 28, 'H' => 15, 'I' => 25, 'J' => 12,
-    'K' => 10, 'L' => 35, 'M' => 50, 'N' => 15, 'O' => 25,
-    'P' => 18, 'Q' => 18, 'R' => 15,
+    'K' => 10, 'L' => 35, 'M' => 50, 'N' => 25,
+    'O' => 18, 'P' => 18, 'Q' => 15,
 ];
 foreach ($anchos as $c => $w) {
     $sheet2->getColumnDimension($c)->setWidth($w);
 }
 
 $sheet2->freezePane('A2');
-$sheet2->setAutoFilter('A1:R' . ($row - 1));
+$sheet2->setAutoFilter('A1:Q' . ($row - 1));
 
 // ============================================
 // HOJA 3: TIMELINE

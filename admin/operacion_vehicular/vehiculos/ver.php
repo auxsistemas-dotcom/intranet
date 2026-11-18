@@ -28,14 +28,28 @@ if ($vehiculo_id <= 0) {
 }
 
 // ============================================
+// ✅ MENSAJE FLASH
+// ============================================
+$mensaje = '';
+if (isset($_SESSION['mensaje'])) {
+    $mensaje = $_SESSION['mensaje'];
+    unset($_SESSION['mensaje']);
+}
+
+// ============================================
 // ✅ OBTENER VEHÍCULO
 // ============================================
 $stmt = $pdo->prepare("
-    SELECT v.id, v.placa, v.marca, v.modelo, v.referencia,
-           v.fecha_matricula, v.tipo, v.activo, v.creado_el, v.añadido_por,
-           u.nombre_completo AS agregado_por_nombre
+    SELECT v.id, v.placa, v.marca, v.modelo, v.referencia, v.kilometraje,
+           v.fecha_matricula, v.tipo_vehiculo, v.modalidad_vehiculo, v.activo, 
+           v.fecha_ultimo_mantenimiento,
+           v.creado_el, v.añadido_por,
+           v.actualizado_por, v.actualizado_el,
+           ua.nombre_completo AS agregado_por_nombre,
+           um.nombre_completo AS actualizado_por_nombre
     FROM ope_vehiculos v
-    LEFT JOIN usuarios u ON v.añadido_por = u.id
+    LEFT JOIN usuarios ua ON v.añadido_por = ua.id
+    LEFT JOIN usuarios um ON v.actualizado_por = um.id
     WHERE v.id = ?
 ");
 $stmt->execute([$vehiculo_id]);
@@ -48,7 +62,7 @@ if (!$vehiculo) {
 }
 
 // ============================================
-// ✅ OBTENER DOCUMENTOS DEL VEHÍCULO (activos + históricos)
+// ✅ OBTENER DOCUMENTOS DEL VEHÍCULO
 // ============================================
 $stmt = $pdo->prepare("
     SELECT id, tipo_documento, fecha_expedicion, fecha_vencimiento, activo, creado_el
@@ -63,20 +77,25 @@ $stmt->execute([$vehiculo_id]);
 $documentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // ============================================
-// ✅ OBTENER TOTAL DE RUTAS DEL VEHÍCULO
+// ✅ OBTENER TOTAL DE RUTAS
 // ============================================
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM ope_ruta WHERE vehiculo_id = ?");
 $stmt->execute([$vehiculo_id]);
 $total_rutas = $stmt->fetchColumn();
 
 // ============================================
-// ✅ CALCULAR AÑOS DEL VEHÍCULO
+// ✅ CALCULAR AÑOS Y TECNOMECÁNICA SEGÚN TIPO
 // ============================================
+$tipo_vh = $vehiculo['tipo_vehiculo'] ?? 'CARRO';
+$modalidad_vh = $vehiculo['modalidad_vehiculo'] ?? '';
+
 $fecha_matricula = new DateTime($vehiculo['fecha_matricula']);
 $hoy = new DateTime();
 $hoy->setTime(0, 0, 0);
 $anios_vehiculo = (int) $fecha_matricula->diff($hoy)->y;
-$requiere_tecno = ($anios_vehiculo >= 5);
+
+$anios_minimos_tecno = ($tipo_vh === 'CARRO') ? 5 : 2;
+$requiere_tecno = ($anios_vehiculo >= $anios_minimos_tecno);
 
 // ============================================
 // ✅ FUNCIÓN: Calcular estado de vencimiento
@@ -101,16 +120,88 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
 }
 
 // ============================================
-// ✅ ETIQUETA DEL TIPO CON EMOJI
+// ✅ NUEVA FUNCIÓN: Estado del mantenimiento
+// Regla: cada 6 meses desde fecha_ultimo_mantenimiento
 // ============================================
-function etiquetaTipo($tipo) {
+function calcularEstadoMantenimiento($fecha_ultimo_mantenimiento) {
+    if (empty($fecha_ultimo_mantenimiento)) {
+        return [
+            'clase' => 'sin-datos',
+            'texto' => '⚪ Sin registrar',
+            'dias' => null,
+            'proximo' => null
+        ];
+    }
+    
+    $hoy = new DateTime();
+    $hoy->setTime(0, 0, 0);
+    
+    $ultimo = new DateTime($fecha_ultimo_mantenimiento);
+    $proximo = clone $ultimo;
+    $proximo->modify('+6 months');
+    $proximo->setTime(0, 0, 0);
+    
+    $dias = (int) $hoy->diff($proximo)->format('%r%a');
+    
+    if ($dias < 0) {
+        return [
+            'clase' => 'vencido',
+            'texto' => '🔧 VENCIDO hace ' . abs($dias) . ' días',
+            'dias' => $dias,
+            'proximo' => $proximo->format('Y-m-d')
+        ];
+    }
+    
+    if ($dias <= 15) {
+        return [
+            'clase' => 'proximo',
+            'texto' => '🔧 Vence en ' . $dias . ' días',
+            'dias' => $dias,
+            'proximo' => $proximo->format('Y-m-d')
+        ];
+    }
+    
+    return [
+        'clase' => 'ok',
+        'texto' => '✅ Al día (' . $dias . ' días)',
+        'dias' => $dias,
+        'proximo' => $proximo->format('Y-m-d')
+    ];
+}
+
+// ============================================
+// ✅ ETIQUETAS
+// ============================================
+function etiquetaTipoVehiculo($tipo) {
     $mapa = [
-        'NUEVO' => '🆕 NUEVO',
-        'TEST_DRIVE' => '🚗 TEST DRIVE',
-        'USADO' => '🔄 USADO'
+        'CARRO' => '🚗 Carro',
+        'MOTO' => '🏍️ Moto',
+        'CAMION' => '🚚 Camión'
     ];
     return $mapa[$tipo] ?? $tipo;
 }
+
+function etiquetaModalidad($modalidad) {
+    $mapa = [
+        'NUEVO' => '🆕 NUEVO',
+        'TEST_DRIVE' => '🚗 TEST DRIVE',
+        'USADO' => '🔄 USADO',
+        'PROPIO' => '👤 PROPIO'
+    ];
+    return $mapa[$modalidad] ?? $modalidad;
+}
+
+function iconoTipoVehiculo($tipo) {
+    $mapa = [
+        'CARRO' => 'fa-car',
+        'MOTO' => 'fa-motorcycle',
+        'CAMION' => 'fa-truck'
+    ];
+    return $mapa[$tipo] ?? 'fa-car';
+}
+
+// Calcular estado del mantenimiento una vez
+$mantenimiento = calcularEstadoMantenimiento($vehiculo['fecha_ultimo_mantenimiento'] ?? null);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -136,7 +227,7 @@ function etiquetaTipo($tipo) {
             padding: 20px 40px;
         }
         
-        /* ========== HEADER ========== */
+        /* HEADER */
         .header {
             background: #12232b;
             margin-bottom: 30px;
@@ -176,7 +267,22 @@ function etiquetaTipo($tipo) {
             transform: translateY(-2px);
         }
         
-        /* ========== CARD ========== */
+        /* MENSAJE FLASH */
+        .mensaje-exito {
+            background: #d5f5e3;
+            color: #1a7a3a;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #27ae60;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: opacity 0.5s ease;
+        }
+        
+        /* CARD */
         .card {
             background: white;
             border-radius: 12px;
@@ -185,7 +291,7 @@ function etiquetaTipo($tipo) {
             margin-bottom: 20px;
         }
         
-        /* ========== ENCABEZADO DEL VEHÍCULO ========== */
+        /* ENCABEZADO DEL VEHÍCULO */
         .vehiculo-header {
             display: flex;
             align-items: center;
@@ -206,6 +312,14 @@ function etiquetaTipo($tipo) {
             color: white;
             font-size: 32px;
             flex-shrink: 0;
+        }
+        
+        .vehiculo-avatar.moto {
+            background: linear-gradient(135deg, #d68910, #f39c12);
+        }
+        
+        .vehiculo-avatar.camion {
+            background: linear-gradient(135deg, #6c3483, #8e44ad);
         }
         
         .vehiculo-info { flex: 1; min-width: 0; }
@@ -235,6 +349,19 @@ function etiquetaTipo($tipo) {
             color: white;
         }
         
+        .badge-tipo.moto { background: #d68910; }
+        .badge-tipo.camion { background: #6c3483; }
+        
+        .badge-modalidad {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #3498db;
+            color: white;
+        }
+        
         .badge-activo {
             display: inline-block;
             padding: 4px 12px;
@@ -255,7 +382,7 @@ function etiquetaTipo($tipo) {
             color: #922b21;
         }
         
-        /* ========== SECCIONES ========== */
+        /* SECCIONES */
         .seccion-titulo {
             font-size: 16px;
             color: #12232b;
@@ -279,7 +406,7 @@ function etiquetaTipo($tipo) {
             font-weight: 600;
         }
         
-        /* ========== GRID DE DATOS ========== */
+        /* GRID DE DATOS */
         .datos-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -330,7 +457,81 @@ function etiquetaTipo($tipo) {
             text-overflow: ellipsis;
         }
         
-        /* ========== LISTA DOCUMENTOS ========== */
+        /* ✅ NUEVO: Badges de mantenimiento */
+        .badge-mant {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        
+        .badge-mant.ok {
+            background: #d5f5e3;
+            color: #1a7a3a;
+        }
+        
+        .badge-mant.proximo {
+            background: #fdebd0;
+            color: #a04000;
+        }
+        
+        .badge-mant.vencido {
+            background: #fadbd8;
+            color: #922b21;
+        }
+        
+        .badge-mant.sin-datos {
+            background: #ecf0f1;
+            color: #7f8c8d;
+        }
+        
+        /* ✅ NUEVO: Alerta grande de mantenimiento */
+        .alerta-mantenimiento {
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .alerta-mantenimiento i {
+            font-size: 24px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        
+        .alerta-mantenimiento strong { font-weight: 700; }
+        
+        .alerta-mantenimiento.vencido {
+            background: #fadbd8;
+            border-left: 5px solid #e74c3c;
+            color: #922b21;
+        }
+        
+        .alerta-mantenimiento.vencido i { color: #e74c3c; }
+        
+        .alerta-mantenimiento.proximo {
+            background: #fef3c7;
+            border-left: 5px solid #f39c12;
+            color: #92400e;
+        }
+        
+        .alerta-mantenimiento.proximo i { color: #f39c12; }
+        
+        .alerta-mantenimiento.sin-datos {
+            background: #e8f4f8;
+            border-left: 5px solid #3498db;
+            color: #1a5276;
+        }
+        
+        .alerta-mantenimiento.sin-datos i { color: #3498db; }
+        
+        /* LISTA DOCUMENTOS */
         .documentos-lista {
             display: flex;
             flex-direction: column;
@@ -383,13 +584,8 @@ function etiquetaTipo($tipo) {
             letter-spacing: 0.5px;
         }
         
-        .documento-tipo.tecno {
-            background: #8e44ad;
-        }
-        
-        .documento-tipo.historico {
-            background: #95a5a6;
-        }
+        .documento-tipo.tecno { background: #8e44ad; }
+        .documento-tipo.historico { background: #95a5a6; }
         
         .documento-fecha {
             font-size: 14px;
@@ -418,7 +614,7 @@ function etiquetaTipo($tipo) {
         .documento-estado.vencido { background: #fadbd8; color: #922b21; }
         .documento-estado.historico { background: #d5dbdb; color: #566573; }
         
-        /* ========== ALERTA TECNO ========== */
+        /* ALERTA TECNO */
         .alerta-tecno {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -438,7 +634,7 @@ function etiquetaTipo($tipo) {
             margin-top: 2px;
         }
         
-        /* ========== EMPTY STATE ========== */
+        /* EMPTY STATE */
         .empty-documentos {
             text-align: center;
             padding: 30px 20px;
@@ -461,7 +657,7 @@ function etiquetaTipo($tipo) {
         
         .empty-documentos p { font-size: 13px; }
         
-        /* ========== BOTONES FINALES ========== */
+        /* BOTONES FINALES */
         .footer-acciones {
             display: flex;
             justify-content: flex-end;
@@ -486,33 +682,28 @@ function etiquetaTipo($tipo) {
             cursor: pointer;
         }
         
-        .btn-rutas {
-            background: #3498db;
-            color: white;
-        }
-        
+        .btn-rutas { background: #3498db; color: white; }
         .btn-rutas:hover {
             background: #2980b9;
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(52,152,219,0.3);
         }
         
-        .btn-editar {
-            background: #f39c12;
-            color: white;
+        .btn-documentos { background: #8e44ad; color: white; }
+        .btn-documentos:hover {
+            background: #7d3c98;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(142,68,173,0.3);
         }
         
+        .btn-editar { background: #f39c12; color: white; }
         .btn-editar:hover {
             background: #e67e22;
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(243,156,18,0.3);
         }
         
-        .btn-volver-lista {
-            background: #7f8c8d;
-            color: white;
-        }
-        
+        .btn-volver-lista { background: #7f8c8d; color: white; }
         .btn-volver-lista:hover {
             background: #95a5a6;
             transform: translateY(-2px);
@@ -521,7 +712,7 @@ function etiquetaTipo($tipo) {
 </head>
 <body>
 
-<!-- ========== HEADER ========== -->
+<!-- HEADER -->
 <header class="header">
     <div class="container">
         <div class="logo">
@@ -534,22 +725,34 @@ function etiquetaTipo($tipo) {
     </div>
 </header>
 
-<!-- ========== CONTENIDO ========== -->
+<!-- CONTENIDO -->
 <div class="container">
+    
+    <?php if ($mensaje): ?>
+        <div class="mensaje-exito" id="msgExito">
+            <i class="fas fa-check-circle"></i>
+            <?php echo htmlspecialchars($mensaje); ?>
+        </div>
+    <?php endif; ?>
     
     <div class="card">
         
-        <!-- ===== ENCABEZADO DEL VEHÍCULO ===== -->
+        <!-- ENCABEZADO DEL VEHÍCULO -->
         <div class="vehiculo-header">
-            <div class="vehiculo-avatar">
-                <i class="fas fa-car"></i>
+            <div class="vehiculo-avatar <?php echo strtolower($tipo_vh); ?>">
+                <i class="fas <?php echo iconoTipoVehiculo($tipo_vh); ?>"></i>
             </div>
             <div class="vehiculo-info">
                 <div class="vehiculo-placa">
                     <?php echo htmlspecialchars($vehiculo['placa']); ?>
                 </div>
                 <div class="vehiculo-meta">
-                    <span class="badge-tipo"><?php echo etiquetaTipo($vehiculo['tipo']); ?></span>
+                    <span class="badge-tipo <?php echo strtolower($tipo_vh); ?>">
+                        <?php echo etiquetaTipoVehiculo($tipo_vh); ?>
+                    </span>
+                    <span class="badge-modalidad">
+                        <?php echo etiquetaModalidad($modalidad_vh); ?>
+                    </span>
                     <span class="<?php echo $vehiculo['activo'] ? 'badge-activo' : 'badge-inactivo'; ?>">
                         <i class="fas <?php echo $vehiculo['activo'] ? 'fa-check-circle' : 'fa-times-circle'; ?>"></i>
                         <?php echo $vehiculo['activo'] ? 'Activo' : 'Inactivo'; ?>
@@ -558,7 +761,42 @@ function etiquetaTipo($tipo) {
             </div>
         </div>
         
-        <!-- ===== INFORMACIÓN DEL VEHÍCULO ===== -->
+        <!-- ===== ALERTA GRANDE DE MANTENIMIENTO (solo si vencido/próximo/sin datos) ===== -->
+        <?php if ($mantenimiento['clase'] === 'vencido'): ?>
+            <div class="alerta-mantenimiento vencido">
+                <i class="fas fa-tools"></i>
+                <div>
+                    <strong>🔧 Mantenimiento VENCIDO hace <?php echo abs($mantenimiento['dias']); ?> días.</strong>
+                    <br>
+                    Último mantenimiento: <strong><?php echo date('d/m/Y', strtotime($vehiculo['fecha_ultimo_mantenimiento'])); ?></strong>
+                    · Venció el <strong><?php echo date('d/m/Y', strtotime($mantenimiento['proximo'])); ?></strong>
+                    <br>
+                    <span style="font-size: 13px;">Este vehículo <strong>NO podrá viajar</strong> hasta que se registre un nuevo mantenimiento.</span>
+                </div>
+            </div>
+        <?php elseif ($mantenimiento['clase'] === 'proximo'): ?>
+            <div class="alerta-mantenimiento proximo">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <strong>⚠️ El mantenimiento vence en <?php echo $mantenimiento['dias']; ?> días.</strong>
+                    <br>
+                    Próximo mantenimiento: <strong><?php echo date('d/m/Y', strtotime($mantenimiento['proximo'])); ?></strong>
+                    <br>
+                    <span style="font-size: 13px;">Programa el mantenimiento antes de la fecha para evitar bloqueos.</span>
+                </div>
+            </div>
+        <?php elseif ($mantenimiento['clase'] === 'sin-datos'): ?>
+            <div class="alerta-mantenimiento sin-datos">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    <strong>Este vehículo no tiene registrada la fecha del último mantenimiento.</strong>
+                    <br>
+                    <span style="font-size: 13px;">Registra la fecha en "Editar datos" para que pueda crear rutas.</span>
+                </div>
+            </div>
+        <?php endif; ?>
+        
+        <!-- INFORMACIÓN DEL VEHÍCULO -->
         <div class="seccion-titulo">
             <i class="fas fa-info-circle"></i>
             Información del vehículo
@@ -624,14 +862,64 @@ function etiquetaTipo($tipo) {
                     <div class="dato-valor"><?php echo $anios_vehiculo; ?> año(s)</div>
                 </div>
             </div>
+            
+            <!-- Kilometraje -->
+            <div class="dato-item" style="border-left-color: #3498db;">
+                <div class="dato-icon" style="background: #3498db;">
+                    <i class="fas fa-tachometer-alt"></i>
+                </div>
+                <div class="dato-content">
+                    <div class="dato-label">Kilometraje</div>
+                    <div class="dato-valor"><?php echo number_format((int)($vehiculo['kilometraje'] ?? 0), 0, ',', '.'); ?> km</div>
+                </div>
+            </div>
+            
+            <!-- ✅ NUEVO: Último mantenimiento -->
+            <div class="dato-item" style="border-left-color: #e67e22;">
+                <div class="dato-icon" style="background: #e67e22;">
+                    <i class="fas fa-tools"></i>
+                </div>
+                <div class="dato-content">
+                    <div class="dato-label">Último mantenimiento</div>
+                    <div class="dato-valor" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <?php if (!empty($vehiculo['fecha_ultimo_mantenimiento'])): ?>
+                            <span><?php echo date('d/m/Y', strtotime($vehiculo['fecha_ultimo_mantenimiento'])); ?></span>
+                        <?php else: ?>
+                            <span style="color: #95a5a6;">—</span>
+                        <?php endif; ?>
+                        <span class="badge-mant <?php echo $mantenimiento['clase']; ?>">
+                            <?php echo $mantenimiento['texto']; ?>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Última actualización -->
+            <?php if (!empty($vehiculo['actualizado_el'])): ?>
+                <div class="dato-item" style="border-left-color: #8e44ad;">
+                    <div class="dato-icon" style="background: #8e44ad;">
+                        <i class="fas fa-sync-alt"></i>
+                    </div>
+                    <div class="dato-content">
+                        <div class="dato-label">Última actualización</div>
+                        <div class="dato-valor">
+                            <?php echo date('d/m/Y H:i', strtotime($vehiculo['actualizado_el'])); ?>
+                            <?php if (!empty($vehiculo['actualizado_por_nombre'])): ?>
+                                · <?php echo htmlspecialchars($vehiculo['actualizado_por_nombre']); ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
         
-        <!-- ===== ALERTA TECNO ===== -->
+        <!-- ALERTA TECNO -->
         <?php if (!$requiere_tecno): ?>
             <div class="alerta-tecno">
                 <i class="fas fa-info-circle"></i>
                 <div>
-                    Este vehículo tiene <strong><?php echo $anios_vehiculo; ?> año(s)</strong> (menos de 5). 
+                    Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios_vehiculo; ?> año(s)</strong> 
+                    (menos de <?php echo $anios_minimos_tecno; ?>). 
                     <strong>No requiere Tecnomecánica</strong>. Solo se requiere SOAT.
                 </div>
             </div>
@@ -639,13 +927,14 @@ function etiquetaTipo($tipo) {
             <div class="alerta-tecno" style="background: #fef3c7; border-color: #f39c12; color: #92400e;">
                 <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
                 <div>
-                    Este vehículo tiene <strong><?php echo $anios_vehiculo; ?> años</strong> (5+). 
+                    Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios_vehiculo; ?> años</strong> 
+                    (<?php echo $anios_minimos_tecno; ?>+). 
                     <strong>Requiere SOAT y Tecnomecánica</strong> obligatoriamente.
                 </div>
             </div>
         <?php endif; ?>
         
-        <!-- ===== DOCUMENTOS ===== -->
+        <!-- DOCUMENTOS -->
         <div class="seccion-titulo">
             <i class="fas fa-file-alt"></i>
             Documentos
@@ -674,7 +963,10 @@ function etiquetaTipo($tipo) {
                             </div>
                             <div class="documento-fecha">
                                 <i class="fas fa-calendar-alt"></i>
-                                <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?>
+                                <div>
+                                    <div style="font-size: 11px; color: #95a5a6;">Exp: <?php echo date('d/m/Y', strtotime($doc['fecha_expedicion'])); ?></div>
+                                    <div><strong>Vence: <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?></strong></div>
+                                </div>
                             </div>
                             <span class="documento-estado <?php echo $clase; ?>">
                                 <?php echo $texto; ?>
@@ -691,23 +983,39 @@ function etiquetaTipo($tipo) {
             </div>
         <?php endif; ?>
         
-        <!-- ===== BOTONES ===== -->
+        <!-- BOTONES -->
         <div class="footer-acciones">
             <a href="../index.php" class="btn-accion btn-volver-lista">
                 <i class="fas fa-arrow-left"></i> Volver al listado
             </a>
             
-            <a href="rutas.php?id=<?php echo $vehiculo['id']; ?>" class="btn-accion btn-rutas">
+            <a href="../rutas/rutas.php?vehiculo=<?php echo $vehiculo['id']; ?>" class="btn-accion btn-rutas">
                 <i class="fas fa-route"></i> Ver rutas (<?php echo $total_rutas; ?>)
             </a>
             
-            <a href="editar.php?id=<?php echo $vehiculo['id']; ?>" class="btn-accion btn-editar">
-                <i class="fas fa-edit"></i> Editar documentos
+            <a href="editar.php?id=<?php echo $vehiculo['id']; ?>" class="btn-accion btn-documentos">
+                <i class="fas fa-file-alt"></i> Editar documentos
+            </a>
+            
+            <a href="editar_vh.php?id=<?php echo $vehiculo['id']; ?>" class="btn-accion btn-editar">
+                <i class="fas fa-edit"></i> Editar datos
             </a>
         </div>
         
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const msgExito = document.getElementById('msgExito');
+    if (msgExito) {
+        setTimeout(function() {
+            msgExito.style.opacity = '0';
+            setTimeout(function() { msgExito.style.display = 'none'; }, 500);
+        }, 3000);
+    }
+});
+</script>
 
 </body>
 </html>

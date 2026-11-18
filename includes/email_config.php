@@ -1,6 +1,22 @@
 <?php
 // includes/email_config.php - VERSIÓN CON mail() DE PHP (SIN SMTP)
 
+// ============================================
+// ✅ HELPER: OBTENER URL BASE FIJA
+// ============================================
+if (!function_exists('getUrlBase')) {
+    function getUrlBase() {
+        // 1) Si existe BASE_URL en config.php → usarla
+        if (defined('BASE_URL') && BASE_URL !== '/' && BASE_URL !== '') {
+            return rtrim(BASE_URL, '/') . '/';
+        }
+        // 2) Fallback: construir dinámicamente
+        $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+        $host = $_SERVER['HTTP_HOST'] ?? 'intranet2.armotor.com';
+        return $protocolo . $host . '/';
+    }
+}
+
 function enviarCorreo($destinatario, $asunto, $mensaje_html, $mensaje_texto = '') {
     $remitente = 'informacion@armotor.com';
     $nombre_remitente = 'Sistema Intranet - ARMOTOR';
@@ -22,13 +38,11 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
         return false;
     }
     
-    // Obtener nombre del solicitante
     $stmt = $db->prepare("SELECT nombre_completo FROM usuarios WHERE id = ?");
     $stmt->execute([$solicitud['usuario_id']]);
     $solicitante = $stmt->fetch(PDO::FETCH_ASSOC);
     $solicitante_nombre = $solicitante['nombre_completo'] ?? 'Usuario';
     
-    // Tipos de permisos
     $tipos_permisos = [
         'Cita Medica' => 'Cita Médica',
         'Cita Medica Urgencias' => 'Cita Médica Urgencias',
@@ -44,9 +58,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     ];
     
     $tipo_nombre = $tipos_permisos[$solicitud['tipo']] ?? $solicitud['tipo'];
-    
-    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $url_base = $protocolo . $_SERVER['HTTP_HOST'] . '/';
+    $url_base = getUrlBase();
     
     $mensaje_html = '
     <!DOCTYPE html>
@@ -84,14 +96,11 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
                 <p>Hola <strong>' . htmlspecialchars($destinatario_nombre) . '</strong>,</p>';
 
     if ($tipo == 'nueva') {
-        $mensaje_html .= '
-                <p>El colaborador <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha creado una nueva solicitud de permiso que requiere tu revisión y aprobación.</p>';
+        $mensaje_html .= '<p>El colaborador <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha creado una nueva solicitud de permiso que requiere tu revisión y aprobación.</p>';
     } elseif ($tipo == 'aprobado') {
-        $mensaje_html .= '
-                <p>La solicitud de <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha sido <strong style="color: #27ae60;">APROBADA</strong>.</p>';
+        $mensaje_html .= '<p>La solicitud de <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha sido <strong style="color: #27ae60;">APROBADA</strong>.</p>';
     } elseif ($tipo == 'rechazado') {
-        $mensaje_html .= '
-                <p>La solicitud de <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha sido <strong style="color: #e74c3c;">RECHAZADA</strong>.</p>';
+        $mensaje_html .= '<p>La solicitud de <strong>' . htmlspecialchars($solicitante_nombre) . '</strong> ha sido <strong style="color: #e74c3c;">RECHAZADA</strong>.</p>';
     }
 
     $mensaje_html .= '
@@ -135,7 +144,7 @@ function enviarNotificacionPermiso($solicitud, $tipo, $destinatario_email, $dest
     if ($tipo == 'nueva') {
         $mensaje_html .= '
                 <p style="text-align: center;">
-                    <a href="' . $url_base . 'admin' . '" class="btn" style="color: white;">
+                    <a href="' . $url_base . 'admin" class="btn" style="color: white;">
                         🔍 Ver y Gestionar Solicitud
                     </a>
                 </p>
@@ -200,8 +209,7 @@ function enviarCorreoRadicadoPQRS($email_contacto, $nombre_completo, $codigo, $d
         return false;
     }
     
-    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $url_base = $protocolo . ($_SERVER['HTTP_HOST'] ?? 'intranet2.armotor.com') . '/';
+    $url_base = getUrlBase();
     
     $tipo_solicitud = $datos_pqrs['tipo_solicitud'] ?? '';
     $asunto_pqrs = $datos_pqrs['asunto'] ?? '';
@@ -329,8 +337,7 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
         return false;
     }
 
-    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $url_base  = $protocolo . ($_SERVER['HTTP_HOST'] ?? 'intranet2.armotor.com') . '/';
+    $url_base = getUrlBase();
 
     $codigo        = $datos_pqrs['codigo']            ?? '';
     $tipo          = $datos_pqrs['tipo_solicitud']    ?? '';
@@ -423,7 +430,7 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
                 </div>
 
                 <p style="text-align: center; margin-top: 25px;">
-                    <a href="' . $url_base . 'admin/pqrs/ver.php?id=' . $pqrs_id . '" class="btn">
+                    <a href="' . $url_base . 'aplicaciones/otros/pqrs/ver.php?id=' . $pqrs_id . '" class="btn">
                         🔍 Ver PQRS y Gestionar
                     </a>
                 </p>
@@ -448,7 +455,7 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
     if (!empty($asignado_por)) {
         $mensaje_texto .= "- Asignado por: " . $asignado_por . "\n";
     }
-    $mensaje_texto .= "\nGestionar en: " . $url_base . "admin/pqrs/ver.php?id=" . $pqrs_id . "\n\n";
+    $mensaje_texto .= "\nGestionar en: " . $url_base . "aplicaciones/otros/pqrs/ver.php?id=" . $pqrs_id . "\n\n";
     $mensaje_texto .= "ARMOTOR - Sistema de Gestión PQRSF\n";
     $mensaje_texto .= "Este es un mensaje automático.\n";
 
@@ -460,15 +467,6 @@ function enviarNotificacionAsignacionPQRS($email_gestor, $nombre_gestor, $datos_
 // ============================================
 // CORREO: COLABORADOR AÑADIDO A UNA PQRS
 // ============================================
-/**
- * Notifica por correo a un colaborador que fue añadido a una PQRS.
- *
- * @param string $email_colaborador   Email del colaborador
- * @param string $nombre_colaborador  Nombre del colaborador
- * @param array  $datos_pqrs          Datos de la PQRS
- * @param string $nombre_principal    Nombre de quien lo añadió (opcional)
- * @return bool
- */
 function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborador, $datos_pqrs, $nombre_principal = '') {
 
     if (empty($email_colaborador)) {
@@ -476,8 +474,7 @@ function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborad
         return false;
     }
 
-    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-    $url_base  = $protocolo . ($_SERVER['HTTP_HOST'] ?? 'intranet2.armotor.com') . '/';
+    $url_base = getUrlBase();
 
     $codigo        = $datos_pqrs['codigo']            ?? '';
     $tipo          = $datos_pqrs['tipo_solicitud']    ?? '';
@@ -602,7 +599,7 @@ function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborad
                 </div>
 
                 <p style="text-align: center; margin-top: 25px;">
-                    <a href="' . $url_base . 'admin/pqrs/ver.php?id=' . $pqrs_id . '" class="btn">
+                    <a href="' . $url_base . 'aplicaciones/otros/pqrs/ver.php?id=' . $pqrs_id . '" class="btn">
                         🔍 Ver PQRS y Gestionar
                     </a>
                 </p>
@@ -637,7 +634,7 @@ function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborad
     if (!empty($marca_vh) || !empty($placa)) {
         $mensaje_texto .= "- Vehículo: " . trim($marca_vh . ' ' . $placa) . "\n";
     }
-    $mensaje_texto .= "\nGestionar en: " . $url_base . "admin/pqrs/ver.php?id=" . $pqrs_id . "\n\n";
+    $mensaje_texto .= "\nGestionar en: " . $url_base . "aplicaciones/otros/pqrs/ver.php?id=" . $pqrs_id . "\n\n";
     $mensaje_texto .= "ARMOTOR - Sistema de Gestión PQRSF\n";
     $mensaje_texto .= "Este es un mensaje automático.\n";
 
@@ -645,4 +642,3 @@ function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborad
 
     return enviarCorreo($email_colaborador, $asunto_email, $mensaje_html, $mensaje_texto);
 }
-?>

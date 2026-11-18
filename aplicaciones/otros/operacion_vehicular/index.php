@@ -72,11 +72,14 @@ $stmt->execute([$usuario_id]);
 $datos_usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // ============================================
-// ✅ VERIFICAR SI TIENE RUTA EN CURSO
+// ✅ VERIFICAR SI TIENE RUTA EN CURSO (ahora con km_salida)
 // ============================================
 $stmt = $pdo->prepare("
     SELECT r.id, r.fecha_salida, r.ciudad_origen, r.ciudad_destino, r.motivo_viaje,
-           v.placa, v.marca, v.modelo, v.tipo AS tipo_vh
+           r.km_salida,
+           v.placa, v.marca, v.modelo, 
+           v.tipo_vehiculo AS tipo_vh, 
+           v.modalidad_vehiculo AS modalidad_vh
     FROM ope_ruta r
     LEFT JOIN ope_vehiculos v ON r.vehiculo_id = v.id
     WHERE r.conductor_id = ? AND r.estado = 'EN_CURSO'
@@ -164,7 +167,10 @@ $licencias = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt = $pdo->prepare("
     SELECT r.id, r.fecha_salida, r.fecha_regreso, r.fecha_finalizacion, r.estado,
            r.ciudad_origen, r.ciudad_destino, r.observaciones_cierre,
-           v.placa, v.marca, v.modelo, v.tipo AS tipo_vh
+           r.km_salida, r.km_llegada,
+           v.placa, v.marca, v.modelo, 
+           v.tipo_vehiculo AS tipo_vh,
+           v.modalidad_vehiculo AS modalidad_vh
     FROM ope_ruta r
     LEFT JOIN ope_vehiculos v ON r.vehiculo_id = v.id
     WHERE r.conductor_id = ? AND r.estado != 'EN_CURSO'
@@ -220,6 +226,18 @@ function calcularDuracion($fecha_salida, $fecha_finalizacion) {
     }
     
     return empty($partes) ? 'Menos de 1 min' : implode(' ', $partes);
+}
+
+// ============================================
+// ✅ FUNCIÓN: Etiqueta tipo de vehículo
+// ============================================
+function etiquetaTipoVehiculo($tipo) {
+    $mapa = [
+        'CARRO' => 'CARRO',
+        'MOTO' => 'MOTO',
+        'CAMION' => 'CAMIÓN'
+    ];
+    return $mapa[$tipo] ?? $tipo;
 }
 
 // ============================================
@@ -408,10 +426,16 @@ if (count($partes) >= 2) {
             backdrop-filter: blur(10px);
         }
         
+        .banner-acciones {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
         .btn-finalizar-ruta {
             background: #27ae60;
             color: white;
-            padding: 14px 28px;
+            padding: 14px 24px;
             border: none;
             border-radius: 10px;
             font-family: 'Poppins', sans-serif;
@@ -433,6 +457,35 @@ if (count($partes) >= 2) {
         }
         
         .btn-finalizar-ruta i {
+            font-size: 18px;
+        }
+        
+        /* NUEVO: Botón "No se pudo viajar" */
+        .btn-no-viajar {
+            background: #c0392b;
+            color: white;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(192,57,43,0.5);
+            white-space: nowrap;
+        }
+        
+        .btn-no-viajar:hover {
+            background: #a93226;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(192,57,43,0.7);
+        }
+        
+        .btn-no-viajar i {
             font-size: 18px;
         }
         
@@ -753,9 +806,9 @@ if (count($partes) >= 2) {
             margin-left: 6px;
         }
         
-        .ruta-tipo.test { background: #8e44ad; }
-        .ruta-tipo.nuevo { background: #27ae60; }
-        .ruta-tipo.usado { background: #3498db; }
+        .ruta-tipo.carro { background: #173742; }
+        .ruta-tipo.moto { background: #e67e22; }
+        .ruta-tipo.camion { background: #8e44ad; }
         
         .ruta-meta {
             display: flex;
@@ -781,6 +834,18 @@ if (count($partes) >= 2) {
         .ruta-duracion {
             background: #e8f4f8;
             color: #1a5276;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .ruta-km {
+            background: #f0f2f5;
+            color: #2c3e50;
             padding: 4px 10px;
             border-radius: 8px;
             font-size: 11px;
@@ -834,61 +899,7 @@ if (count($partes) >= 2) {
             margin-bottom: 15px;
         }
         
-        /* ========== ACCIONES FINALES ========== */
-        .acciones-finales {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 30px;
-            padding-top: 25px;
-            border-top: 2px solid #f0f0f0;
-            flex-wrap: wrap;
-        }
-        
-        .btn-grande {
-            padding: 14px 28px;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .btn-ver-rutas {
-            background: #3498db;
-            color: white;
-        }
-        
-        .btn-ver-rutas:hover {
-            background: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(52,152,219,0.3);
-        }
-        
-        .btn-crear-ruta {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .btn-crear-ruta:hover {
-            background: #219a52;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(39,174,96,0.3);
-        }
-        
-        .btn-crear-ruta.disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-            pointer-events: none;
-            opacity: 0.6;
-        }
-        
-        /* ========== MODAL FINALIZAR ========== */
+        /* ========== MODAL FINALIZAR / NO VIAJAR ========== */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0;
@@ -915,7 +926,7 @@ if (count($partes) >= 2) {
             background: white;
             border-radius: 16px;
             padding: 35px 40px;
-            max-width: 520px;
+            max-width: 540px;
             width: 100%;
             text-align: center;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
@@ -936,6 +947,14 @@ if (count($partes) >= 2) {
         }
         
         .modal-icon i { font-size: 38px; color: #27ae60; }
+        
+        .modal-icon.danger {
+            background: #fadbd8;
+        }
+        
+        .modal-icon.danger i {
+            color: #e74c3c;
+        }
         
         .modal-title {
             font-size: 22px;
@@ -974,7 +993,7 @@ if (count($partes) >= 2) {
         
         .modal-info i { color: #7f8c8d; width: 16px; }
         
-        /* ========== CAMPO OBSERVACIONES MODAL ========== */
+        /* ========== CAMPOS DEL MODAL ========== */
         .modal-campo {
             text-align: left;
             margin-bottom: 20px;
@@ -990,6 +1009,11 @@ if (count($partes) >= 2) {
             margin-bottom: 8px;
         }
         
+        .modal-campo label .obligatorio {
+            color: #e74c3c;
+        }
+        
+        .modal-campo input[type="number"],
         .modal-campo textarea {
             width: 100%;
             padding: 12px 16px;
@@ -997,15 +1021,19 @@ if (count($partes) >= 2) {
             border-radius: 10px;
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
-            resize: vertical;
-            min-height: 80px;
             transition: all 0.3s ease;
+            resize: vertical;
         }
         
+        .modal-campo input[type="number"]:focus,
         .modal-campo textarea:focus {
             outline: none;
             border-color: #27ae60;
             box-shadow: 0 0 0 3px rgba(39,174,96,0.15);
+        }
+        
+        .modal-campo textarea {
+            min-height: 80px;
         }
         
         .modal-campo small {
@@ -1013,6 +1041,43 @@ if (count($partes) >= 2) {
             color: #95a5a6;
             margin-top: 5px;
             display: block;
+        }
+        
+        .modal-campo .info-km-salida {
+            font-size: 12px;
+            color: #1a5276;
+            background: #e8f4f8;
+            border-left: 3px solid #3498db;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .modal-campo .info-km-salida i {
+            color: #3498db;
+        }
+        
+        .modal-campo .mensaje-km {
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 5px;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .modal-campo .mensaje-km.visible {
+            display: flex;
+        }
+        
+        .modal-campo .mensaje-km.error {
+            background: #fadbd8;
+            color: #922b21;
+            border-left: 3px solid #e74c3c;
         }
         
         .modal-acciones {
@@ -1045,6 +1110,19 @@ if (count($partes) >= 2) {
             background: #219a52;
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(39,174,96,0.4);
+        }
+        
+        .btn-modal-cancelar-ruta { background: #c0392b; color: white; }
+        .btn-modal-cancelar-ruta:hover {
+            background: #a93226;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(192,57,43,0.4);
+        }
+        
+        .btn-modal-finalizar:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
     </style>
 </head>
@@ -1109,12 +1187,24 @@ if (count($partes) >= 2) {
                         <i class="fas fa-clock"></i>
                         <?php echo date('d/m/Y H:i', strtotime($ruta_activa['fecha_salida'])); ?>
                     </span>
+                    <?php if (!empty($ruta_activa['km_salida'])): ?>
+                        <span>
+                            <i class="fas fa-tachometer-alt"></i>
+                            Km salida: <?php echo number_format((int)$ruta_activa['km_salida'], 0, ',', '.'); ?> km
+                        </span>
+                    <?php endif; ?>
                 </div>
             </div>
-            <button type="button" class="btn-finalizar-ruta" onclick="abrirModalFinalizar()">
-                <i class="fas fa-check-circle"></i>
-                Finalizar ruta
-            </button>
+            <div class="banner-acciones">
+                <button type="button" class="btn-finalizar-ruta" onclick="abrirModalFinalizar()">
+                    <i class="fas fa-check-circle"></i>
+                    Finalizar ruta
+                </button>
+                <button type="button" class="btn-no-viajar" onclick="abrirModalNoViajar()">
+                    <i class="fas fa-ban"></i>
+                    No se pudo viajar
+                </button>
+            </div>
         </div>
     <?php endif; ?>
     
@@ -1245,18 +1335,21 @@ if (count($partes) >= 2) {
                             'CANCELADO' => '🔴 Cancelada'
                         ][$ruta['estado']] ?? $ruta['estado'];
                         
-                        $clase_tipo = strtolower(str_replace('_', '', $ruta['tipo_vh']));
-                        if ($clase_tipo === 'testdrive') $clase_tipo = 'test';
-                        $texto_tipo = [
-                            'NUEVO' => 'NUEVO',
-                            'TEST_DRIVE' => 'TEST DRIVE',
-                            'USADO' => 'USADO'
-                        ][$ruta['tipo_vh']] ?? $ruta['tipo_vh'];
+                        // Badge según tipo de vehículo
+                        $tipo_vh = $ruta['tipo_vh'] ?? 'CARRO';
+                        $clase_tipo = strtolower($tipo_vh);
+                        $texto_tipo = etiquetaTipoVehiculo($tipo_vh);
                         
                         // Calcular duración
                         $duracion = null;
                         if ($ruta['estado'] === 'FINALIZADO' && !empty($ruta['fecha_finalizacion'])) {
                             $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion']);
+                        }
+                        
+                        // Calcular km recorridos
+                        $km_recorridos = null;
+                        if (!empty($ruta['km_salida']) && !empty($ruta['km_llegada'])) {
+                            $km_recorridos = (int)$ruta['km_llegada'] - (int)$ruta['km_salida'];
                         }
                     ?>
                         <div class="ruta-item <?php echo $clase_estado; ?>">
@@ -1283,6 +1376,12 @@ if (count($partes) >= 2) {
                                         <span class="ruta-duracion">
                                             <i class="fas fa-hourglass-half"></i>
                                             <?php echo $duracion; ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if ($km_recorridos !== null): ?>
+                                        <span class="ruta-km">
+                                            <i class="fas fa-tachometer-alt"></i>
+                                            <?php echo number_format($km_recorridos, 0, ',', '.'); ?> km
                                         </span>
                                     <?php endif; ?>
                                 <?php elseif (!empty($ruta['fecha_regreso'])): ?>
@@ -1323,7 +1422,7 @@ if (count($partes) >= 2) {
         
         <p class="modal-message">
             Vas a marcar esta ruta como <strong>FINALIZADA</strong>.
-            La ruta se moverá al histórico y podrás crear nuevas.
+            El vehículo quedará disponible para nuevas rutas.
         </p>
         
         <div class="modal-info">
@@ -1343,8 +1442,34 @@ if (count($partes) >= 2) {
             </div>
         </div>
         
-        <form method="POST" action="finalizar_ruta.php">
+        <form method="POST" action="finalizar_ruta.php" id="formFinalizar">
             <input type="hidden" name="ruta_id" value="<?php echo $ruta_activa['id']; ?>">
+            
+            <div class="modal-campo">
+                <label for="km_llegada">
+                    <i class="fas fa-tachometer-alt"></i> Kilometraje de llegada <span class="obligatorio">*</span>
+                </label>
+                
+                <?php if (!empty($ruta_activa['km_salida'])): ?>
+                    <div class="info-km-salida">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Km de salida: <strong><?php echo number_format((int)$ruta_activa['km_salida'], 0, ',', '.'); ?> km</strong>
+                    </div>
+                <?php endif; ?>
+                
+                <input 
+                    type="number" 
+                    name="km_llegada" 
+                    id="km_llegada" 
+                    placeholder="Ej: 45500"
+                    min="<?php echo (int)($ruta_activa['km_salida'] ?? 0); ?>"
+                    step="1"
+                    required
+                    oninput="validarKmLlegada()"
+                >
+                <div class="mensaje-km" id="mensaje_km_llegada"></div>
+                <small>Debe ser igual o mayor al km de salida</small>
+            </div>
             
             <div class="modal-campo">
                 <label for="observaciones_cierre">
@@ -1365,8 +1490,69 @@ if (count($partes) >= 2) {
                 <button type="button" class="btn-modal btn-modal-cancelar" onclick="cerrarModalFinalizar()">
                     <i class="fas fa-times"></i> Cancelar
                 </button>
-                <button type="submit" class="btn-modal btn-modal-finalizar">
+                <button type="submit" class="btn-modal btn-modal-finalizar" id="btnConfirmarFinalizar">
                     <i class="fas fa-check"></i> Sí, finalizar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========== MODAL "NO SE PUDO VIAJAR" ========== -->
+<div class="modal-overlay" id="modalNoViajar">
+    <div class="modal-content">
+        <div class="modal-icon danger">
+            <i class="fas fa-ban"></i>
+        </div>
+        
+        <h2 class="modal-title">¿No se pudo viajar?</h2>
+        
+        <p class="modal-message">
+            Vas a cancelar esta ruta. El vehículo <strong>quedará disponible</strong> nuevamente y <strong>no se actualizará su kilometraje</strong>.
+        </p>
+        
+        <div class="modal-info">
+            <div>
+                <i class="fas fa-hashtag"></i>
+                <strong>Placa:</strong> <?php echo htmlspecialchars($ruta_activa['placa']); ?>
+            </div>
+            <?php if (!empty($ruta_activa['ciudad_destino'])): ?>
+            <div>
+                <i class="fas fa-map-marker-alt"></i>
+                <strong>Destino:</strong> <?php echo htmlspecialchars($ruta_activa['ciudad_destino']); ?>
+            </div>
+            <?php endif; ?>
+            <div>
+                <i class="fas fa-clock"></i>
+                <strong>Salida:</strong> <?php echo date('d/m/Y H:i', strtotime($ruta_activa['fecha_salida'])); ?>
+            </div>
+        </div>
+        
+        <form method="POST" action="cancelar_ruta.php" id="formNoViajar">
+            <input type="hidden" name="ruta_id" value="<?php echo $ruta_activa['id']; ?>">
+            
+            <div class="modal-campo">
+                <label for="razon_cancelacion">
+                    <i class="fas fa-comment"></i> Razón por la que no se pudo viajar <span class="obligatorio">*</span>
+                </label>
+                <textarea 
+                    name="observaciones_cierre" 
+                    id="razon_cancelacion"
+                    placeholder="Ej: EL VEHÍCULO NO ARRANCÓ, SE CANCELÓ LA REUNIÓN, ETC."
+                    maxlength="1000"
+                    rows="4"
+                    required
+                    style="text-transform: uppercase;"
+                ></textarea>
+                <small>Debes explicar por qué no se realizó el viaje</small>
+            </div>
+            
+            <div class="modal-acciones">
+                <button type="button" class="btn-modal btn-modal-cancelar" onclick="cerrarModalNoViajar()">
+                    <i class="fas fa-times"></i> Volver
+                </button>
+                <button type="submit" class="btn-modal btn-modal-cancelar-ruta">
+                    <i class="fas fa-ban"></i> Sí, cancelar ruta
                 </button>
             </div>
         </form>
@@ -1384,7 +1570,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
             msgExito.style.opacity = '0';
             setTimeout(function() { msgExito.style.display = 'none'; }, 500);
-        }, 2500);
+        }, 3000);
     }
 });
 
@@ -1393,7 +1579,20 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================
 function abrirModalFinalizar() {
     const modal = document.getElementById('modalFinalizar');
-    if (modal) modal.classList.add('active');
+    if (modal) {
+        modal.classList.add('active');
+        // Reset del campo km_llegada
+        const kmInput = document.getElementById('km_llegada');
+        if (kmInput) {
+            kmInput.value = '';
+            kmInput.focus();
+        }
+        const msg = document.getElementById('mensaje_km_llegada');
+        if (msg) {
+            msg.classList.remove('visible');
+            msg.innerHTML = '';
+        }
+    }
 }
 
 function cerrarModalFinalizar() {
@@ -1401,14 +1600,114 @@ function cerrarModalFinalizar() {
     if (modal) modal.classList.remove('active');
 }
 
+// ============================================
+// VALIDAR KM LLEGADA
+// ============================================
+const KM_SALIDA = <?php echo (int)($ruta_activa['km_salida'] ?? 0); ?>;
+
+function validarKmLlegada() {
+    const input = document.getElementById('km_llegada');
+    const msg = document.getElementById('mensaje_km_llegada');
+    const btn = document.getElementById('btnConfirmarFinalizar');
+    
+    if (!msg) return;
+    
+    const km = parseInt(input.value) || 0;
+    
+    msg.classList.remove('visible', 'error');
+    msg.innerHTML = '';
+    
+    if (km === 0) {
+        btn.disabled = false; // El HTML required lo maneja
+        return;
+    }
+    
+    if (KM_SALIDA > 0 && km < KM_SALIDA) {
+        msg.innerHTML = '<i class="fas fa-exclamation-circle"></i> El km no puede ser menor al de salida (' + new Intl.NumberFormat('es-CO').format(KM_SALIDA) + ' km)';
+        msg.classList.add('visible', 'error');
+        btn.disabled = true;
+        return;
+    }
+    
+    btn.disabled = false;
+}
+
+// ============================================
+// MODAL NO SE PUDO VIAJAR
+// ============================================
+function abrirModalNoViajar() {
+    const modal = document.getElementById('modalNoViajar');
+    if (modal) {
+        modal.classList.add('active');
+        const textarea = document.getElementById('razon_cancelacion');
+        if (textarea) {
+            textarea.value = '';
+            setTimeout(() => textarea.focus(), 100);
+        }
+    }
+}
+
+function cerrarModalNoViajar() {
+    const modal = document.getElementById('modalNoViajar');
+    if (modal) modal.classList.remove('active');
+}
+
+// ============================================
+// CERRAR MODALES CON ESC
+// ============================================
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') cerrarModalFinalizar();
+    if (e.key === 'Escape') {
+        cerrarModalFinalizar();
+        cerrarModalNoViajar();
+    }
 });
 
+// Cerrar al hacer clic fuera
 document.addEventListener('click', function(e) {
-    const modal = document.getElementById('modalFinalizar');
-    if (e.target === modal) cerrarModalFinalizar();
+    if (e.target === document.getElementById('modalFinalizar')) cerrarModalFinalizar();
+    if (e.target === document.getElementById('modalNoViajar')) cerrarModalNoViajar();
 });
+
+// ============================================
+// VALIDACIÓN AL ENVIAR FORM FINALIZAR
+// ============================================
+const formFinalizar = document.getElementById('formFinalizar');
+if (formFinalizar) {
+    formFinalizar.addEventListener('submit', function(e) {
+        const km = parseInt(document.getElementById('km_llegada').value) || 0;
+        
+        if (km <= 0) {
+            e.preventDefault();
+            alert('❌ Debes ingresar el kilometraje de llegada');
+            document.getElementById('km_llegada').focus();
+            return false;
+        }
+        
+        if (KM_SALIDA > 0 && km < KM_SALIDA) {
+            e.preventDefault();
+            alert('❌ El km de llegada no puede ser menor al de salida (' + new Intl.NumberFormat('es-CO').format(KM_SALIDA) + ' km)');
+            document.getElementById('km_llegada').focus();
+            return false;
+        }
+    });
+}
+
+// ============================================
+// VALIDACIÓN AL ENVIAR FORM NO VIAJAR
+// ============================================
+const formNoViajar = document.getElementById('formNoViajar');
+if (formNoViajar) {
+    formNoViajar.addEventListener('submit', function(e) {
+        const razon = document.getElementById('razon_cancelacion').value.trim();
+        
+        if (razon.length < 5) {
+            e.preventDefault();
+            alert('❌ Debes explicar por qué no se pudo viajar (mínimo 5 caracteres)');
+            document.getElementById('razon_cancelacion').focus();
+            return false;
+        }
+    });
+}
 </script>
 
 </body>

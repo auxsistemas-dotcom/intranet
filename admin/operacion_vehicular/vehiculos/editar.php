@@ -32,7 +32,7 @@ if ($vehiculo_id <= 0) {
 // ============================================
 $stmt = $pdo->prepare("
     SELECT v.id, v.placa, v.marca, v.modelo, v.referencia,
-           v.fecha_matricula, v.tipo, v.activo
+           v.fecha_matricula, v.tipo_vehiculo, v.modalidad_vehiculo, v.activo, v.kilometraje
     FROM ope_vehiculos v
     WHERE v.id = ?
 ");
@@ -46,13 +46,30 @@ if (!$vehiculo) {
 }
 
 // ============================================
-// ✅ CALCULAR EDAD DEL VEHÍCULO
+// ✅ LÓGICA DE TECNOMECÁNICA SEGÚN TIPO
 // ============================================
+$tipo_vh = $vehiculo['tipo_vehiculo'] ?? 'CARRO';
+
 $fecha_matricula = new DateTime($vehiculo['fecha_matricula']);
 $hoy = new DateTime();
 $hoy->setTime(0, 0, 0);
 $anios = (int) $fecha_matricula->diff($hoy)->y;
-$requiere_tecno = ($anios >= 5);
+
+$anios_minimos_tecno = ($tipo_vh === 'CARRO') ? 5 : 2;
+$requiere_tecno = ($anios >= $anios_minimos_tecno);
+
+// ============================================
+// ✅ FUNCIÓN: Calcular fecha de vencimiento (+1 año -1 día)
+// ============================================
+function calcularFechaVencimiento($fecha_expedicion) {
+    if (empty($fecha_expedicion)) {
+        return null;
+    }
+    $fecha = new DateTime($fecha_expedicion);
+    $fecha->modify('+1 year');
+    $fecha->modify('-1 day');
+    return $fecha->format('Y-m-d');
+}
 
 // ============================================
 // ✅ PROCESAR ACCIONES
@@ -69,21 +86,28 @@ if (isset($_SESSION['mensaje'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'agregar') {
     $tipo_doc = trim($_POST['tipo_doc'] ?? '');
     $fecha_expedicion = trim($_POST['fecha_expedicion'] ?? '');
-    $fecha_vencimiento = trim($_POST['fecha_vencimiento'] ?? '');
     
     $tipos_validos = ['SOAT', 'TECNOMECANICA'];
     
+    // Calcular vencimiento automáticamente
+    $fecha_vencimiento = calcularFechaVencimiento($fecha_expedicion);
+    
     if (!in_array($tipo_doc, $tipos_validos)) {
         $error = "❌ Tipo de documento no válido";
-    } elseif ($tipo_doc === 'TECNOMECANICA' && !$requiere_tecno) {
-        $error = "❌ Este vehículo NO requiere Tecnomecánica (tiene menos de 5 años)";
-    } elseif (empty($fecha_expedicion) || empty($fecha_vencimiento)) {
-        $error = "❌ Ambas fechas son obligatorias";
-    } elseif (strtotime($fecha_expedicion) > time()) {
+    } 
+    elseif ($tipo_doc === 'TECNOMECANICA' && !$requiere_tecno) {
+        $error = "❌ Este vehículo NO requiere Tecnomecánica (tiene menos de {$anios_minimos_tecno} años)";
+    } 
+    elseif (empty($fecha_expedicion)) {
+        $error = "❌ La fecha de expedición es obligatoria";
+    } 
+    elseif (strtotime($fecha_expedicion) > time()) {
         $error = "❌ La fecha de expedición no puede ser futura";
-    } elseif (strtotime($fecha_vencimiento) <= strtotime($fecha_expedicion)) {
-        $error = "❌ La fecha de vencimiento debe ser posterior a la de expedición";
-    } else {
+    }
+    elseif (!$fecha_vencimiento) {
+        $error = "❌ Error al calcular la fecha de vencimiento";
+    }
+    else {
         // Verificar que no exista el tipo activo
         $stmt = $pdo->prepare("
             SELECT id FROM ope_documentos_vh 
@@ -108,7 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
                     $_SESSION['usuario_id']
                 ]);
                 
-                $_SESSION['mensaje'] = "✅ Documento " . ($tipo_doc === 'SOAT' ? 'SOAT' : 'Tecnomecánica') . " agregado correctamente";
+                $_SESSION['mensaje'] = "✅ Documento " . ($tipo_doc === 'SOAT' ? 'SOAT' : 'Tecnomecánica') 
+                                     . " agregado. Vence el " . date('d/m/Y', strtotime($fecha_vencimiento));
                 header("Location: editar.php?id=" . $vehiculo_id);
                 exit();
                 
@@ -124,17 +149,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'renovar') {
     $documento_id = (int) ($_POST['documento_id'] ?? 0);
     $nueva_expedicion = trim($_POST['nueva_expedicion'] ?? '');
-    $nueva_vencimiento = trim($_POST['nueva_vencimiento'] ?? '');
+    
+    // Calcular vencimiento automáticamente
+    $nueva_vencimiento = calcularFechaVencimiento($nueva_expedicion);
     
     if ($documento_id <= 0) {
         $error = "❌ Documento no especificado";
-    } elseif (empty($nueva_expedicion) || empty($nueva_vencimiento)) {
-        $error = "❌ Ambas fechas son obligatorias";
-    } elseif (strtotime($nueva_expedicion) > time()) {
+    } 
+    elseif (empty($nueva_expedicion)) {
+        $error = "❌ La fecha de expedición es obligatoria";
+    } 
+    elseif (strtotime($nueva_expedicion) > time()) {
         $error = "❌ La fecha de expedición no puede ser futura";
-    } elseif (strtotime($nueva_vencimiento) <= strtotime($nueva_expedicion)) {
-        $error = "❌ La fecha de vencimiento debe ser posterior a la de expedición";
-    } else {
+    }
+    elseif (!$nueva_vencimiento) {
+        $error = "❌ Error al calcular la nueva fecha de vencimiento";
+    }
+    else {
         // Obtener el documento a renovar
         $stmt = $pdo->prepare("
             SELECT id, tipo_documento, fecha_vencimiento 
@@ -150,7 +181,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         // ✅ Validar que la nueva fecha de vencimiento sea mayor a la actual
         elseif ($nueva_vencimiento <= $documento_viejo['fecha_vencimiento']) {
             $fecha_actual = date('d/m/Y', strtotime($documento_viejo['fecha_vencimiento']));
-            $error = "❌ La nueva fecha de vencimiento debe ser posterior al $fecha_actual";
+            $error = "❌ La nueva fecha de vencimiento ({$nueva_vencimiento}) debe ser posterior a la actual ({$fecha_actual}). " 
+                   . "Revisa la fecha de expedición.";
         } 
         else {
             try {
@@ -177,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
                 $pdo->commit();
                 
                 $nombre_doc = ($documento_viejo['tipo_documento'] === 'SOAT' ? 'SOAT' : 'Tecnomecánica');
-                $_SESSION['mensaje'] = "✅ $nombre_doc renovado correctamente";
+                $_SESSION['mensaje'] = "✅ $nombre_doc renovado. Nuevo vencimiento: " . date('d/m/Y', strtotime($nueva_vencimiento));
                 header("Location: editar.php?id=" . $vehiculo_id);
                 exit();
                 
@@ -249,6 +281,18 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
     } else {
         return ['clase' => 'vigente', 'texto' => "🟢 Vence el " . date('d/m/Y', strtotime($fecha_vencimiento))];
     }
+}
+
+// ============================================
+// ✅ ETIQUETA TIPO VEHÍCULO
+// ============================================
+function etiquetaTipoVehiculo($tipo) {
+    $mapa = [
+        'CARRO' => '🚗 Carro',
+        'MOTO' => '🏍️ Moto',
+        'CAMION' => '🚚 Camión'
+    ];
+    return $mapa[$tipo] ?? $tipo;
 }
 ?>
 <!DOCTYPE html>
@@ -369,6 +413,18 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             gap: 5px;
         }
         
+        .badge-tipo-vh {
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #173742;
+            color: white;
+        }
+        
+        .badge-tipo-vh.moto { background: #e67e22; }
+        .badge-tipo-vh.camion { background: #8e44ad; }
+        
         .mensaje-error {
             background: #fadbd8;
             color: #922b21;
@@ -463,6 +519,20 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
         }
         
+        .form-campo input[readonly] {
+            background: #e8f4f8;
+            color: #1a5276;
+            font-weight: 600;
+            cursor: not-allowed;
+            border-color: #3498db;
+        }
+        
+        .form-campo small {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: -2px;
+        }
+        
         .btn-agregar {
             background: #27ae60;
             color: white;
@@ -486,6 +556,18 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(39,174,96,0.3);
         }
+        
+        .aviso-tecno {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        
+        .aviso-tecno i { font-size: 16px; margin-top: 2px; }
         
         .lista-titulo {
             font-size: 16px;
@@ -555,9 +637,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             letter-spacing: 0.5px;
         }
         
-        .documento-tipo.tecno {
-            background: #8e44ad;
-        }
+        .documento-tipo.tecno { background: #8e44ad; }
         
         .documento-fecha {
             font-size: 13px;
@@ -567,10 +647,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             gap: 6px;
         }
         
-        .documento-fecha i {
-            color: #7f8c8d;
-            font-size: 12px;
-        }
+        .documento-fecha i { color: #7f8c8d; font-size: 12px; }
         
         .documento-estado {
             display: inline-block;
@@ -781,6 +858,14 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             box-shadow: 0 0 0 3px rgba(52,152,219,0.15);
         }
         
+        .modal-campo input[type="date"][readonly] {
+            background: #e8f4f8;
+            color: #1a5276;
+            font-weight: 600;
+            cursor: not-allowed;
+            border-color: #3498db;
+        }
+        
         .modal-hint {
             font-size: 12px;
             color: #7f8c8d;
@@ -868,6 +953,9 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                     <span><i class="fas fa-tag"></i> <?php echo htmlspecialchars($vehiculo['marca']); ?></span>
                     <span><i class="fas fa-calendar"></i> <?php echo htmlspecialchars($vehiculo['modelo']); ?></span>
                     <span><i class="fas fa-list"></i> <?php echo htmlspecialchars($vehiculo['referencia']); ?></span>
+                    <span class="badge-tipo-vh <?php echo strtolower($tipo_vh); ?>">
+                        <?php echo etiquetaTipoVehiculo($tipo_vh); ?>
+                    </span>
                     <span><i class="fas fa-clock"></i> <?php echo $anios; ?> año(s)</span>
                 </div>
             </div>
@@ -922,6 +1010,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                                 id="fecha_expedicion" 
                                 required
                                 max="<?php echo date('Y-m-d'); ?>"
+                                onchange="calcularVencimiento()"
                             >
                         </div>
                         
@@ -931,8 +1020,10 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                                 type="date" 
                                 name="fecha_vencimiento" 
                                 id="fecha_vencimiento" 
-                                required
+                                readonly
+                                placeholder="Se calcula automáticamente"
                             >
+                            <small>+1 año - 1 día desde la expedición</small>
                         </div>
                         
                         <button type="submit" class="btn-agregar">
@@ -940,6 +1031,26 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                         </button>
                     </div>
                 </form>
+                
+                <?php if (!$requiere_tecno): ?>
+                    <div class="aviso-tecno" style="background: #e8f4f8; border-left: 4px solid #3498db; color: #1a5276;">
+                        <i class="fas fa-info-circle" style="color: #3498db;"></i>
+                        <div>
+                            Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios; ?> año(s)</strong> 
+                            (menos de <?php echo $anios_minimos_tecno; ?>). 
+                            <strong>No requiere Tecnomecánica</strong>. Solo agrega el SOAT.
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <div class="aviso-tecno" style="background: #fef3c7; border-left: 4px solid #f39c12; color: #92400e;">
+                        <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
+                        <div>
+                            Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios; ?> años</strong> 
+                            (<?php echo $anios_minimos_tecno; ?>+). 
+                            <strong>Requiere SOAT y Tecnomecánica</strong> obligatoriamente.
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
         
@@ -963,7 +1074,10 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                             </div>
                             <div class="documento-fecha">
                                 <i class="fas fa-calendar-alt"></i>
-                                Vence: <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?>
+                                <div>
+                                    <div>Exp: <?php echo date('d/m/Y', strtotime($doc['fecha_expedicion'])); ?></div>
+                                    <div><strong>Vence: <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?></strong></div>
+                                </div>
                             </div>
                             <span class="documento-estado <?php echo $estado['clase']; ?>">
                                 <?php echo $estado['texto']; ?>
@@ -1040,6 +1154,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                     id="modalNuevaExpedicion" 
                     required
                     max="<?php echo date('Y-m-d'); ?>"
+                    onchange="calcularVencimientoModal()"
                 >
             </div>
             
@@ -1049,11 +1164,11 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                     type="date" 
                     name="nueva_vencimiento" 
                     id="modalNuevaVencimiento" 
-                    required
+                    readonly
                 >
                 <div class="modal-hint">
                     <i class="fas fa-info-circle"></i>
-                    La fecha debe ser posterior a <strong id="modalFechaActual"></strong>
+                    Se calcula automáticamente: +1 año -1 día
                 </div>
             </div>
             
@@ -1071,6 +1186,51 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
 
 <script>
 // ============================================
+// CALCULAR VENCIMIENTO AUTOMÁTICAMENTE
+// ============================================
+function calcularVencimiento() {
+    const fechaExp = document.getElementById('fecha_expedicion').value;
+    const fechaVenc = document.getElementById('fecha_vencimiento');
+    
+    if (!fechaExp) {
+        fechaVenc.value = '';
+        return;
+    }
+    
+    const partes = fechaExp.split('-');
+    const fecha = new Date(partes[0], parseInt(partes[1]) - 1, partes[2]);
+    fecha.setFullYear(fecha.getFullYear() + 1);
+    fecha.setDate(fecha.getDate() - 1);
+    
+    const yyyy = fecha.getFullYear();
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    
+    fechaVenc.value = `${yyyy}-${mm}-${dd}`;
+}
+
+function calcularVencimientoModal() {
+    const fechaExp = document.getElementById('modalNuevaExpedicion').value;
+    const fechaVenc = document.getElementById('modalNuevaVencimiento');
+    
+    if (!fechaExp) {
+        fechaVenc.value = '';
+        return;
+    }
+    
+    const partes = fechaExp.split('-');
+    const fecha = new Date(partes[0], parseInt(partes[1]) - 1, partes[2]);
+    fecha.setFullYear(fecha.getFullYear() + 1);
+    fecha.setDate(fecha.getDate() - 1);
+    
+    const yyyy = fecha.getFullYear();
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    
+    fechaVenc.value = `${yyyy}-${mm}-${dd}`;
+}
+
+// ============================================
 // MODAL DE RENOVAR
 // ============================================
 function abrirModalRenovar(documentoId, tipoDoc, fechaExpedicion, fechaVencimiento) {
@@ -1079,35 +1239,16 @@ function abrirModalRenovar(documentoId, tipoDoc, fechaExpedicion, fechaVencimien
     const modalDocumentoId = document.getElementById('modalDocumentoId');
     const modalNuevaExpedicion = document.getElementById('modalNuevaExpedicion');
     const modalNuevaVencimiento = document.getElementById('modalNuevaVencimiento');
-    const modalFechaActual = document.getElementById('modalFechaActual');
     
     modalTipoDoc.textContent = tipoDoc;
     modalDocumentoId.value = documentoId;
     
-    // ✅ Mostrar la fecha actual de vencimiento
-    const fechaActualObj = new Date(fechaVencimiento + 'T00:00:00');
-    const fechaActualFormateada = fechaActualObj.toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    });
-    modalFechaActual.textContent = fechaActualFormateada;
+    // Precargar hoy como expedición
+    const hoy = new Date().toISOString().split('T')[0];
+    modalNuevaExpedicion.value = hoy;
     
-    // ✅ Calcular día siguiente para el mínimo de vencimiento
-    const fechaMinima = new Date(fechaVencimiento + 'T00:00:00');
-    fechaMinima.setDate(fechaMinima.getDate() + 1);
-    
-    const year = fechaMinima.getFullYear();
-    const month = String(fechaMinima.getMonth() + 1).padStart(2, '0');
-    const day = String(fechaMinima.getDate()).padStart(2, '0');
-    const fechaMinimaStr = `${year}-${month}-${day}`;
-    
-    // ✅ Aplicar restricciones
-    modalNuevaVencimiento.min = fechaMinimaStr;
-    modalNuevaVencimiento.value = fechaMinimaStr;
-    
-    // ✅ Precargar la fecha de expedición (la actual o hoy)
-    modalNuevaExpedicion.value = fechaExpedicion || new Date().toISOString().split('T')[0];
+    // Calcular vencimiento
+    calcularVencimientoModal();
     
     modal.classList.add('active');
     setTimeout(() => modalNuevaExpedicion.focus(), 100);
@@ -1141,7 +1282,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 msgExito.style.display = 'none';
             }, 500);
-        }, 2000);
+        }, 3000);
     }
 });
 </script>

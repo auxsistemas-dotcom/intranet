@@ -52,12 +52,14 @@ if ($ruta_id <= 0) {
 }
 
 // ============================================
-// ✅ OBTENER RUTA
+// ✅ OBTENER RUTA (con tipo_vehiculo + modalidad_vehiculo + km)
 // ============================================
 $stmt = $pdo->prepare("
     SELECT 
         r.*,
-        v.placa, v.marca, v.modelo, v.referencia, v.tipo AS tipo_vh,
+        v.placa, v.marca, v.modelo, v.referencia, 
+        v.tipo_vehiculo AS tipo_vh,
+        v.modalidad_vehiculo AS modalidad_vh,
         v.id AS vehiculo_id,
         c.id AS conductor_id,
         u.nombre_completo AS conductor_nombre,
@@ -105,13 +107,23 @@ function badgeEstado($estado) {
     return $mapa[$estado] ?? ['clase' => 'sin-datos', 'texto' => $estado];
 }
 
-function badgeTipo($tipo) {
+function badgeTipoVehiculo($tipo) {
+    $mapa = [
+        'CARRO' => ['clase' => 'carro', 'texto' => '🚗 CARRO'],
+        'MOTO' => ['clase' => 'moto', 'texto' => '🏍️ MOTO'],
+        'CAMION' => ['clase' => 'camion', 'texto' => '🚚 CAMIÓN']
+    ];
+    return $mapa[$tipo] ?? ['clase' => 'sin-datos', 'texto' => $tipo ?? '—'];
+}
+
+function badgeModalidad($modalidad) {
     $mapa = [
         'NUEVO' => ['clase' => 'nuevo', 'texto' => 'NUEVO'],
         'TEST_DRIVE' => ['clase' => 'test', 'texto' => 'TEST DRIVE'],
-        'USADO' => ['clase' => 'usado', 'texto' => 'USADO']
+        'USADO' => ['clase' => 'usado', 'texto' => 'USADO'],
+        'PROPIO' => ['clase' => 'propio', 'texto' => 'PROPIO']
     ];
-    return $mapa[$tipo] ?? ['clase' => 'sin-datos', 'texto' => $tipo];
+    return $mapa[$modalidad] ?? ['clase' => 'sin-datos', 'texto' => $modalidad ?? '—'];
 }
 
 function calcularDuracion($fecha_salida, $fecha_finalizacion) {
@@ -139,10 +151,12 @@ function calcularDuracion($fecha_salida, $fecha_finalizacion) {
 
 function textoMedioTransporte($medio, $otro = null) {
     $mapa = [
-        'PUBLICO' => '🚌 Transporte público',
         'PROPIO' => '🚗 Vehículo propio',
         'MOTO' => '🏍️ Motocicleta',
         'ORGANIZACION' => '🚙 Vehículo de la organización',
+        'NODRIZA' => '🚐 Vehículo nodriza / niñera',
+        // Compatibilidad con valores antiguos
+        'PUBLICO' => '🚌 Transporte público',
         'OTRO' => '📝 Otro'
     ];
     $texto = $mapa[$medio] ?? $medio;
@@ -221,8 +235,19 @@ $preguntas_encuesta = [
     ]
 ];
 
+// ============================================
+// ✅ CALCULAR KM RECORRIDOS
+// ============================================
+$km_salida = !empty($ruta['km_salida']) ? (int)$ruta['km_salida'] : null;
+$km_llegada = !empty($ruta['km_llegada']) ? (int)$ruta['km_llegada'] : null;
+$km_recorridos = null;
+if ($km_salida !== null && $km_llegada !== null) {
+    $km_recorridos = $km_llegada - $km_salida;
+}
+
 $estado_info = badgeEstado($ruta['estado']);
-$tipo_info = badgeTipo($ruta['tipo_vh'] ?? null);
+$tipo_info = badgeTipoVehiculo($ruta['tipo_vh'] ?? null);
+$modalidad_info = badgeModalidad($ruta['modalidad_vh'] ?? null);
 $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion']);
 ?>
 <!DOCTYPE html>
@@ -391,10 +416,25 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             letter-spacing: 0.5px;
         }
         
-        .badge-tipo.nuevo { background: #27ae60; color: white; }
-        .badge-tipo.test { background: #8e44ad; color: white; }
-        .badge-tipo.usado { background: #3498db; color: white; }
+        .badge-tipo.carro { background: #173742; color: white; }
+        .badge-tipo.moto { background: #e67e22; color: white; }
+        .badge-tipo.camion { background: #8e44ad; color: white; }
         .badge-tipo.sin-datos { background: #bdc3c7; color: white; }
+        
+        .badge-modalidad {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        
+        .badge-modalidad.nuevo { background: #27ae60; color: white; }
+        .badge-modalidad.test { background: #8e44ad; color: white; }
+        .badge-modalidad.usado { background: #3498db; color: white; }
+        .badge-modalidad.propio { background: #16a085; color: white; }
+        .badge-modalidad.sin-datos { background: #bdc3c7; color: white; }
         
         .ruta-titulo .ruta-subtitulo {
             font-size: 14px;
@@ -542,6 +582,80 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             color: #bdc3c7;
             font-style: italic;
             font-weight: 400;
+        }
+        
+        /* ========== KM SECTION ========== */
+        .km-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .km-card {
+            padding: 18px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+            background: white;
+        }
+        
+        .km-card.salida {
+            border-color: #3498db;
+            background: #ebf5fb;
+        }
+        
+        .km-card.llegada {
+            border-color: #27ae60;
+            background: #eafaf1;
+        }
+        
+        .km-card.recorrido {
+            border-color: #e67e22;
+            background: #fef5e7;
+        }
+        
+        .km-card .km-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            color: white;
+            font-size: 20px;
+        }
+        
+        .km-card.salida .km-icon { background: #3498db; }
+        .km-card.llegada .km-icon { background: #27ae60; }
+        .km-card.recorrido .km-icon { background: #e67e22; }
+        
+        .km-card .km-label {
+            font-size: 11px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        
+        .km-card .km-valor {
+            font-size: 24px;
+            font-weight: 700;
+            color: #12232b;
+        }
+        
+        .km-card .km-valor.vacio {
+            font-size: 16px;
+            color: #bdc3c7;
+            font-style: italic;
+            font-weight: 400;
+        }
+        
+        .km-card .km-unidad {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 2px;
         }
         
         /* ========== DESCRIPCIÓN ========== */
@@ -885,6 +999,11 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
                         <span class="badge-tipo <?php echo $tipo_info['clase']; ?>">
                             <?php echo $tipo_info['texto']; ?>
                         </span>
+                        <?php if (!empty($ruta['modalidad_vh'])): ?>
+                            <span class="badge-modalidad <?php echo $modalidad_info['clase']; ?>">
+                                <?php echo $modalidad_info['texto']; ?>
+                            </span>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </h1>
                 <?php if (!empty($ruta['ciudad_origen']) || !empty($ruta['ciudad_destino'])): ?>
@@ -958,6 +1077,59 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
+    <!-- ===== KILOMETRAJE ===== -->
+    <div class="card">
+        <div class="seccion-titulo">
+            <i class="fas fa-tachometer-alt"></i>
+            Kilometraje
+        </div>
+        
+        <div class="km-grid">
+            <!-- Km salida -->
+            <div class="km-card salida">
+                <div class="km-icon">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+                <div class="km-label">Km Salida</div>
+                <?php if ($km_salida !== null): ?>
+                    <div class="km-valor"><?php echo number_format($km_salida, 0, ',', '.'); ?></div>
+                    <div class="km-unidad">kilómetros</div>
+                <?php else: ?>
+                    <div class="km-valor vacio">No registrado</div>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Km llegada -->
+            <div class="km-card llegada">
+                <div class="km-icon">
+                    <i class="fas fa-sign-in-alt"></i>
+                </div>
+                <div class="km-label">Km Llegada</div>
+                <?php if ($km_llegada !== null): ?>
+                    <div class="km-valor"><?php echo number_format($km_llegada, 0, ',', '.'); ?></div>
+                    <div class="km-unidad">kilómetros</div>
+                <?php else: ?>
+                    <div class="km-valor vacio">No registrado</div>
+                <?php endif; ?>
+            </div>
+            
+            <!-- Km recorridos -->
+            <div class="km-card recorrido">
+                <div class="km-icon">
+                    <i class="fas fa-road"></i>
+                </div>
+                <div class="km-label">Km Recorridos</div>
+                <?php if ($km_recorridos !== null): ?>
+                    <div class="km-valor"><?php echo number_format($km_recorridos, 0, ',', '.'); ?></div>
+                    <div class="km-unidad">kilómetros</div>
+                <?php else: ?>
+                    <div class="km-valor vacio">—</div>
+                    <div class="km-unidad">Se calcula al finalizar</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    
     <!-- ===== DATOS DEL VIAJE ===== -->
     <div class="card">
         <div class="seccion-titulo">
@@ -968,7 +1140,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         <div class="datos-grid">
             <div class="dato-item">
                 <div class="dato-label">Motivo del viaje</div>
-                <div class="dato-value <?php echo empty($ruta['motivo_viaje']) ? 'vacio' : ''; ?>">
+                <div class="dato-valor <?php echo empty($ruta['motivo_viaje']) ? 'vacio' : ''; ?>">
                     <?php echo htmlspecialchars($ruta['motivo_viaje'] ?: 'No especificado'); ?>
                 </div>
             </div>
@@ -1073,6 +1245,13 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
                     <div class="dato-label">Tipo</div>
                     <div class="dato-valor"><?php echo $tipo_info['texto']; ?></div>
                 </div>
+                
+                <?php if (!empty($ruta['modalidad_vh'])): ?>
+                    <div class="dato-item">
+                        <div class="dato-label">Modalidad</div>
+                        <div class="dato-valor"><?php echo $modalidad_info['texto']; ?></div>
+                    </div>
+                <?php endif; ?>
             </div>
         <?php else: ?>
             <p style="color: #95a5a6; font-style: italic; text-align: center; padding: 20px;">
@@ -1111,7 +1290,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             <?php foreach ($preguntas_encuesta as $campo => $pregunta): 
                 $valor = $ruta[$campo] ?? null;
                 
-                // Determinar si la respuesta es "buena" o "mala"
                 $es_buena = false;
                 if ($pregunta['tipo'] === 'si_no_ok') {
                     $es_buena = ($valor == 1);

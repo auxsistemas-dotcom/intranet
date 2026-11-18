@@ -28,13 +28,32 @@ if (!isset($_SESSION['vehiculo_temp'])) {
 $vehiculo = $_SESSION['vehiculo_temp'];
 
 // ============================================
-// ✅ CALCULAR SI NECESITA TECNOMECÁNICA (5+ años)
+// ✅ LÓGICA DE TECNOMECÁNICA SEGÚN TIPO DE VEHÍCULO
 // ============================================
+$tipo_vh = $vehiculo['tipo_vehiculo'] ?? 'CARRO';
+$modalidad_vh = $vehiculo['modalidad_vehiculo'] ?? '';
+
 $fecha_matricula = new DateTime($vehiculo['fecha_matricula']);
 $hoy = new DateTime();
 $hoy->setTime(0, 0, 0);
 $anios = (int) $fecha_matricula->diff($hoy)->y;
-$requiere_tecno = ($anios >= 5);
+
+// Años mínimos para requerir tecnomecánica
+$anios_minimos_tecno = ($tipo_vh === 'CARRO') ? 5 : 2;
+$requiere_tecno = ($anios >= $anios_minimos_tecno);
+
+// ============================================
+// ✅ FUNCIÓN: Calcular fecha de vencimiento (+1 año -1 día)
+// ============================================
+function calcularFechaVencimiento($fecha_expedicion) {
+    if (empty($fecha_expedicion)) {
+        return null;
+    }
+    $fecha = new DateTime($fecha_expedicion);
+    $fecha->modify('+1 year');
+    $fecha->modify('-1 day');
+    return $fecha->format('Y-m-d');
+}
 
 // ============================================
 // ✅ PROCESAR FORMULARIO
@@ -46,27 +65,26 @@ $mensaje = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'agregar_doc') {
     $tipo_doc = trim($_POST['tipo_doc'] ?? '');
     $fecha_expedicion = trim($_POST['fecha_expedicion'] ?? '');
-    $fecha_vencimiento = trim($_POST['fecha_vencimiento'] ?? '');
     
     $tipos_validos = ['SOAT', 'TECNOMECANICA'];
+    
+    // Calcular vencimiento automáticamente
+    $fecha_vencimiento = calcularFechaVencimiento($fecha_expedicion);
     
     if (!in_array($tipo_doc, $tipos_validos)) {
         $error = "❌ Tipo de documento no válido";
     }
     elseif ($tipo_doc === 'TECNOMECANICA' && !$requiere_tecno) {
-        $error = "❌ Este vehículo NO requiere Tecnomecánica (tiene menos de 5 años)";
+        $error = "❌ Este vehículo NO requiere Tecnomecánica (tiene menos de {$anios_minimos_tecno} años)";
     }
     elseif (empty($fecha_expedicion)) {
         $error = "❌ La fecha de expedición es obligatoria";
     }
-    elseif (empty($fecha_vencimiento)) {
-        $error = "❌ La fecha de vencimiento es obligatoria";
-    }
     elseif (strtotime($fecha_expedicion) > time()) {
         $error = "❌ La fecha de expedición no puede ser futura";
     }
-    elseif (strtotime($fecha_vencimiento) <= strtotime($fecha_expedicion)) {
-        $error = "❌ La fecha de vencimiento debe ser posterior a la de expedición";
+    elseif (!$fecha_vencimiento) {
+        $error = "❌ Error al calcular la fecha de vencimiento";
     }
     else {
         $existe = false;
@@ -86,7 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
                 'fecha_vencimiento' => $fecha_vencimiento
             ];
             
-            $_SESSION['mensaje'] = "✅ " . ($tipo_doc === 'SOAT' ? 'SOAT' : 'Tecnomecánica') . " agregado correctamente";
+            $_SESSION['mensaje'] = "✅ " . ($tipo_doc === 'SOAT' ? 'SOAT' : 'Tecnomecánica') 
+                                 . " agregado. Vence el " . date('d/m/Y', strtotime($fecha_vencimiento));
             header("Location: documentos.php");
             exit();
         }
@@ -123,29 +142,35 @@ if (isset($_GET['finalizar'])) {
         $error = "❌ Debes agregar el SOAT antes de finalizar";
     }
     elseif ($requiere_tecno && !$tiene_tecno) {
-        $error = "❌ Este VH requiere Tecnomecánica (5+ años). Debes agregarla antes de finalizar";
+        $error = "❌ Este {$tipo_vh} requiere Tecnomecánica ({$anios_minimos_tecno}+ años). Debes agregarla antes de finalizar";
+    }
+    elseif (empty($_SESSION['vehiculo_temp']['fecha_ultimo_mantenimiento'])) {
+        // ✅ NUEVO: validación de mantenimiento
+        $error = "❌ Falta la fecha del último mantenimiento. Vuelve a datos del vehículo.";
     }
     else {
         try {
             $pdo->beginTransaction();
             
             // ============================================
-            // ✅ 1. INSERT del vehículo CON kilometraje
+            // ✅ 1. INSERT del vehículo CON fecha de mantenimiento
             // ============================================
             $stmt = $pdo->prepare("
                 INSERT INTO ope_vehiculos 
-                    (placa, marca, modelo, referencia, tipo, kilometraje, fecha_matricula, activo, añadido_por, creado_el)
+                    (placa, marca, modelo, referencia, tipo_vehiculo, modalidad_vehiculo, kilometraje, fecha_matricula, fecha_ultimo_mantenimiento, activo, añadido_por, creado_el)
                 VALUES 
-                    (?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
             ");
             $stmt->execute([
                 $vehiculo['placa'],
                 $vehiculo['marca'],
                 $vehiculo['modelo'],
                 $vehiculo['referencia'],
-                $vehiculo['tipo'],
+                $vehiculo['tipo_vehiculo'],
+                $vehiculo['modalidad_vehiculo'],
                 isset($vehiculo['kilometraje']) ? intval($vehiculo['kilometraje']) : 0,
                 $vehiculo['fecha_matricula'],
+                $vehiculo['fecha_ultimo_mantenimiento'],   // ✅ NUEVO
                 $vehiculo['añadido_por']
             ]);
             
@@ -227,6 +252,15 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
     } else {
         return ['clase' => 'vigente', 'texto' => "🟢 Vence el " . date('d/m/Y', strtotime($fecha_vencimiento))];
     }
+}
+
+function etiquetaTipo($tipo) {
+    $mapa = [
+        'CARRO' => '🚗 Carro',
+        'MOTO' => '🏍️ Moto',
+        'CAMION' => '🚚 Camión'
+    ];
+    return $mapa[$tipo] ?? $tipo;
 }
 ?>
 <!DOCTYPE html>
@@ -355,7 +389,11 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             color: white;
         }
         
-        .vehiculo-tipo.propio {
+        .vehiculo-tipo.moto {
+            background: #e67e22;
+        }
+        
+        .vehiculo-tipo.camion {
             background: #8e44ad;
         }
         
@@ -478,6 +516,20 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
             outline: none;
             border-color: #173742;
             box-shadow: 0 0 0 3px rgba(23,55,66,0.1);
+        }
+        
+        .form-campo input[readonly] {
+            background: #e8f4f8;
+            color: #1a5276;
+            font-weight: 600;
+            cursor: not-allowed;
+            border-color: #3498db;
+        }
+        
+        .form-campo small {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: -2px;
         }
         
         .btn-agregar-doc {
@@ -747,7 +799,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
     
     <div class="card">
         
-        <!-- ===== INFO VEHÍCULO (ahora con KM) ===== -->
+        <!-- ===== INFO VEHÍCULO ===== -->
         <div class="vehiculo-header">
             <div class="vehiculo-avatar">
                 <i class="fas fa-car"></i>
@@ -760,8 +812,11 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                     <span><i class="fas fa-tag"></i> <?php echo htmlspecialchars($vehiculo['marca']); ?></span>
                     <span><i class="fas fa-calendar"></i> <?php echo htmlspecialchars($vehiculo['modelo']); ?></span>
                     <span><i class="fas fa-list"></i> <?php echo htmlspecialchars($vehiculo['referencia']); ?></span>
-                    <span class="vehiculo-tipo <?php echo $vehiculo['tipo'] === 'PROPIO' ? 'propio' : ''; ?>">
-                        <?php echo htmlspecialchars($vehiculo['tipo']); ?>
+                    <span class="vehiculo-tipo <?php echo strtolower($tipo_vh); ?>">
+                        <?php echo etiquetaTipo($tipo_vh); ?>
+                    </span>
+                    <span class="vehiculo-tipo" style="background: #3498db;">
+                        <?php echo htmlspecialchars($modalidad_vh); ?>
                     </span>
                     <span class="vehiculo-km">
                         <i class="fas fa-tachometer-alt"></i>
@@ -799,14 +854,14 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
         </div>
         
         <div class="form-documento">
-            <form method="POST" action="">
+            <form method="POST" action="" id="formDocumento">
                 <input type="hidden" name="accion" value="agregar_doc">
                 
                 <div class="form-documento-grid">
                     
                     <div class="form-campo">
                         <label for="tipo_doc">Tipo documento</label>
-                        <select name="tipo_doc" id="tipo_doc" required>
+                        <select name="tipo_doc" id="tipo_doc" required onchange="recalcularVencimiento()">
                             <option value="">Selecciona...</option>
                             <?php if (!$tiene_soat): ?>
                                 <option value="SOAT">SOAT</option>
@@ -825,6 +880,7 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                             id="fecha_expedicion" 
                             required
                             max="<?php echo date('Y-m-d'); ?>"
+                            onchange="recalcularVencimiento()"
                         >
                     </div>
                     
@@ -834,7 +890,8 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                             type="date" 
                             name="fecha_vencimiento" 
                             id="fecha_vencimiento" 
-                            required
+                            readonly
+                            placeholder="Se calcula automáticamente"
                         >
                     </div>
                     
@@ -848,7 +905,8 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                 <div class="aviso-tecno">
                     <i class="fas fa-info-circle"></i>
                     <div>
-                        Este vehículo tiene <strong><?php echo $anios; ?> año(s)</strong> (menos de 5). 
+                        Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios; ?> año(s)</strong> 
+                        (menos de <?php echo $anios_minimos_tecno; ?>). 
                         <strong>No requiere Tecnomecánica</strong>. Solo agrega el SOAT.
                     </div>
                 </div>
@@ -856,7 +914,8 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                 <div class="aviso-tecno" style="background: #fef3c7; border-color: #f39c12; color: #92400e;">
                     <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
                     <div>
-                        Este vehículo tiene <strong><?php echo $anios; ?> años</strong> (5+). 
+                        Este <strong><?php echo strtolower($tipo_vh); ?></strong> tiene <strong><?php echo $anios; ?> años</strong> 
+                        (<?php echo $anios_minimos_tecno; ?>+). 
                         <strong>Requiere SOAT y Tecnomecánica</strong> obligatoriamente.
                     </div>
                 </div>
@@ -883,7 +942,10 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
                             </div>
                             <div class="documento-fecha">
                                 <i class="fas fa-calendar-alt"></i>
-                                <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?>
+                                <div>
+                                    <div>Exp: <?php echo date('d/m/Y', strtotime($doc['fecha_expedicion'])); ?></div>
+                                    <div><strong>Vence: <?php echo date('d/m/Y', strtotime($doc['fecha_vencimiento'])); ?></strong></div>
+                                </div>
                             </div>
                             <span class="documento-estado <?php echo $estado['clase']; ?>">
                                 <?php echo $estado['texto']; ?>
@@ -947,6 +1009,39 @@ function calcularEstadoVencimiento($fecha_vencimiento) {
 </div>
 
 <script>
+// ============================================
+// CALCULAR FECHA DE VENCIMIENTO AUTOMÁTICAMENTE
+// ============================================
+function recalcularVencimiento() {
+    const fechaExpInput = document.getElementById('fecha_expedicion');
+    const fechaVencInput = document.getElementById('fecha_vencimiento');
+    
+    if (!fechaExpInput.value) {
+        fechaVencInput.value = '';
+        return;
+    }
+    
+    // Parsear fecha (formato YYYY-MM-DD)
+    const partes = fechaExpInput.value.split('-');
+    const fecha = new Date(partes[0], parseInt(partes[1]) - 1, partes[2]);
+    
+    // Sumar 1 año
+    fecha.setFullYear(fecha.getFullYear() + 1);
+    
+    // Restar 1 día
+    fecha.setDate(fecha.getDate() - 1);
+    
+    // Formatear como YYYY-MM-DD
+    const yyyy = fecha.getFullYear();
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    
+    fechaVencInput.value = `${yyyy}-${mm}-${dd}`;
+}
+
+// ============================================
+// AUTO-OCULTAR MENSAJE DE ÉXITO
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
     const msgExito = document.getElementById('msgExito');
     if (msgExito) {
@@ -955,7 +1050,7 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 msgExito.style.display = 'none';
             }, 500);
-        }, 2000);
+        }, 3000);
     }
 });
 </script>
