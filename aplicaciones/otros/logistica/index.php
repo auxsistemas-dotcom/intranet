@@ -14,12 +14,14 @@ $rol_usuario = isset($_SESSION['rol']) ? $_SESSION['rol'] : null;
 $stmt = $pdo->query("SELECT * FROM logistica WHERE activo = 1 ORDER BY titulo ASC");
 $archivos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// ✅ Lista de marcas (AUTOCOM agregada al final)
 $marcas_nombres = [
     'kia' => 'KIA',
     'honda' => 'HONDA',
     'faw' => 'FAW',
     'taxis' => 'TAXIS',
-    'inventario' => 'INVENTARIO'
+    'inventario' => 'INVENTARIO',
+    'autocom' => 'AUTOCOM'
 ];
 ?>
 <!DOCTYPE html>

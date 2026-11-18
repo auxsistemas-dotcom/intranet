@@ -12,6 +12,16 @@ if (!isset($_SESSION['usuario_id'])) {
 $rol_usuario = $_SESSION['rol'] ?? 3;
 $usuario_id = $_SESSION['usuario_id'];
 
+// ✅ Lista centralizada de marcas (misma que en index.php)
+$marcas = [
+    'kia'        => 'KIA',
+    'honda'      => 'Honda',
+    'faw'        => 'FAW',
+    'taxis'      => 'Taxis',
+    'inventario' => 'Inventario',
+    'autocom'    => 'AUTOCOM'
+];
+
 // Admin: acceso total
 if ($rol_usuario == 1) {
     // Tiene acceso
@@ -268,11 +278,11 @@ if ($mensaje) {
                 <div class="form-group">
                     <label><i class="fas fa-tag"></i> Marca / Categoría</label>
                     <select name="marca" required>
-                        <option value="kia" <?php echo $item['marca'] == 'kia' ? 'selected' : ''; ?>>KIA</option>
-                        <option value="honda" <?php echo $item['marca'] == 'honda' ? 'selected' : ''; ?>>Honda</option>
-                        <option value="faw" <?php echo $item['marca'] == 'faw' ? 'selected' : ''; ?>>FAW</option>
-                        <option value="taxis" <?php echo $item['marca'] == 'taxis' ? 'selected' : ''; ?>>Taxis</option>
-                        <option value="inventario" <?php echo $item['marca'] == 'inventario' ? 'selected' : ''; ?>>Inventario</option>
+                        <?php foreach ($marcas as $key => $nombre): ?>
+                            <option value="<?php echo $key; ?>" <?php echo $item['marca'] === $key ? 'selected' : ''; ?>>
+                                <?php echo $nombre; ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 

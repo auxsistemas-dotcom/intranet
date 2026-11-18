@@ -90,7 +90,15 @@ $archivos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt = $pdo->query("SELECT marca FROM logistica WHERE activo = 1 GROUP BY marca");
 $marcas_activas = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-$marcas = ['kia' => 'KIA', 'honda' => 'Honda', 'faw' => 'FAW', 'taxis' => 'Taxis', 'inventario' => 'Inventario'];
+// ✅ Lista de marcas (AUTOCOM agregada al final)
+$marcas = [
+    'kia'        => 'KIA',
+    'honda'      => 'Honda',
+    'faw'        => 'FAW',
+    'taxis'      => 'Taxis',
+    'inventario' => 'Inventario',
+    'autocom'    => 'AUTOCOM'
+];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -288,7 +296,7 @@ $marcas = ['kia' => 'KIA', 'honda' => 'Honda', 'faw' => 'FAW', 'taxis' => 'Taxis
                 <div class="alert-info">
                     <i class="fas fa-info-circle"></i> 
                     <strong>Importante:</strong> Solo puede haber <strong>un archivo activo por marca</strong>. 
-                    Las marcas con archivo activo están marcadas con ✅ en la lista.
+                    Las marcas con archivo activo están marcadas con ✅ en la lista. 
                     Debes <strong>eliminar</strong> o <strong>inactivar</strong> el archivo actual antes de subir uno nuevo.
                 </div>
             <?php endif; ?>
@@ -373,7 +381,14 @@ $marcas = ['kia' => 'KIA', 'honda' => 'Honda', 'faw' => 'FAW', 'taxis' => 'Taxis
                                 <tr>
                                     <td><?php echo $archivo['id']; ?></td>
                                     <td>
-                                        <strong><?php echo ucfirst($archivo['marca']); ?></strong>
+                                        <strong>
+                                            <?php 
+                                            // ✅ Muestra el nombre bonito del array (AUTOCOM, KIA, Honda...)
+                                            echo isset($marcas[$archivo['marca']]) 
+                                                ? $marcas[$archivo['marca']] 
+                                                : ucfirst($archivo['marca']); 
+                                            ?>
+                                        </strong>
                                     </td>
                                     <td><?php echo htmlspecialchars($archivo['titulo']); ?></td>
                                     <td><?php echo htmlspecialchars(substr($archivo['descripcion'], 0, 40)); ?>...</td>
