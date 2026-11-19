@@ -52,7 +52,6 @@ $offset = ($pagina - 1) * $registros_por_pagina;
 $where = [];
 $params = [];
 
-// Filtro por estado
 if (!empty($filtro_estado)) {
     $estados_validos = ['EN_CURSO', 'FINALIZADO', 'CANCELADO'];
     if (in_array($filtro_estado, $estados_validos)) {
@@ -61,25 +60,21 @@ if (!empty($filtro_estado)) {
     }
 }
 
-// Filtro por conductor
 if ($filtro_conductor > 0) {
     $where[] = "r.conductor_id = ?";
     $params[] = $filtro_conductor;
 }
 
-// Filtro por vehículo
 if ($filtro_vehiculo > 0) {
     $where[] = "r.vehiculo_id = ?";
     $params[] = $filtro_vehiculo;
 }
 
-// Filtro por fecha desde
 if (!empty($filtro_fecha_desde)) {
     $where[] = "DATE(r.fecha_salida) >= ?";
     $params[] = $filtro_fecha_desde;
 }
 
-// Filtro por fecha hasta
 if (!empty($filtro_fecha_hasta)) {
     $where[] = "DATE(r.fecha_salida) <= ?";
     $params[] = $filtro_fecha_hasta;
@@ -90,19 +85,14 @@ $where_clause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
 // ============================================
 // ✅ CONTAR TOTAL
 // ============================================
-$sql_count = "
-    SELECT COUNT(*) as total
-    FROM ope_ruta r
-    $where_clause
-";
+$sql_count = "SELECT COUNT(*) as total FROM ope_ruta r $where_clause";
 $stmt_count = $pdo->prepare($sql_count);
 $stmt_count->execute($params);
 $total_registros = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
 $total_paginas = ceil($total_registros / $registros_por_pagina);
 
 // ============================================
-// ✅ OBTENER RUTAS CON PAGINACIÓN
-// ✅ CORREGIDO: tipo_vehiculo + modalidad_vehiculo + km_salida + km_llegada
+// ✅ OBTENER RUTAS
 // ============================================
 $sql = "
     SELECT 
@@ -127,7 +117,6 @@ $sql = "
     LIMIT ?, ?
 ";
 
-// ✅ Agregar offset y límite como POSICIONALES al final
 $params_con_limite = $params;
 $params_con_limite[] = $offset;
 $params_con_limite[] = $registros_por_pagina;
@@ -154,7 +143,6 @@ $kpi_canceladas = $stmt->fetchColumn();
 // ============================================
 // ✅ LISTAS PARA FILTROS
 // ============================================
-// Conductores
 $stmt = $pdo->query("
     SELECT c.id, u.nombre_completo
     FROM ope_conductores c
@@ -164,7 +152,6 @@ $stmt = $pdo->query("
 ");
 $conductores_lista = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Vehículos (activos e inactivos, para no perder historial)
 $stmt = $pdo->query("
     SELECT id, placa, marca, modelo, activo
     FROM ope_vehiculos
@@ -173,34 +160,20 @@ $stmt = $pdo->query("
 $vehiculos_lista = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // ============================================
-// ✅ FUNCIÓN: Calcular duración
+// ✅ FUNCIONES HELPER
 // ============================================
 function calcularDuracion($fecha_salida, $fecha_finalizacion) {
-    if (empty($fecha_salida) || empty($fecha_finalizacion)) {
-        return null;
-    }
-    
+    if (empty($fecha_salida) || empty($fecha_finalizacion)) return null;
     $salida = new DateTime($fecha_salida);
     $fin = new DateTime($fecha_finalizacion);
     $diff = $salida->diff($fin);
-    
     $partes = [];
-    if ($diff->days > 0) {
-        $partes[] = $diff->days . 'd';
-    }
-    if ($diff->h > 0) {
-        $partes[] = $diff->h . 'h';
-    }
-    if ($diff->i > 0) {
-        $partes[] = $diff->i . 'min';
-    }
-    
+    if ($diff->days > 0) $partes[] = $diff->days . 'd';
+    if ($diff->h > 0) $partes[] = $diff->h . 'h';
+    if ($diff->i > 0) $partes[] = $diff->i . 'min';
     return empty($partes) ? '< 1 min' : implode(' ', $partes);
 }
 
-// ============================================
-// ✅ HELPERS PARA BADGES
-// ============================================
 function badgeEstado($estado) {
     $mapa = [
         'EN_CURSO' => ['clase' => 'en-curso', 'texto' => '🟡 En Curso'],
@@ -280,6 +253,7 @@ function badgeModalidad($modalidad) {
         .header-botones {
             display: flex;
             gap: 10px;
+            align-items: center;
         }
         
         .btn-volver {
@@ -290,12 +264,39 @@ function badgeModalidad($modalidad) {
             border-radius: 8px;
             transition: all 0.3s ease;
             font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         
         .btn-volver:hover {
             background: #ffc107;
             color: #12232b;
             transform: translateY(-2px);
+        }
+        
+        /* ✅ NUEVO: BOTÓN EXPORTAR */
+        .btn-exportar {
+            background: #1d6f42;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .btn-exportar:hover {
+            background: #145c34;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(29,111,66,0.3);
         }
         
         /* ========== MENSAJES ========== */
@@ -489,9 +490,7 @@ function badgeModalidad($modalidad) {
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
         
-        .tabla-responsive {
-            overflow-x: auto;
-        }
+        .tabla-responsive { overflow-x: auto; }
         
         table {
             width: 100%;
@@ -499,9 +498,7 @@ function badgeModalidad($modalidad) {
             font-size: 13px;
         }
         
-        thead {
-            background: #12232b;
-        }
+        thead { background: #12232b; }
         
         thead th {
             color: white;
@@ -519,16 +516,13 @@ function badgeModalidad($modalidad) {
             transition: background 0.2s;
         }
         
-        tbody tr:hover {
-            background: #f8f9fa;
-        }
+        tbody tr:hover { background: #f8f9fa; }
         
         tbody td {
             padding: 12px 10px;
             vertical-align: middle;
         }
         
-        /* ========== CELDAS ESPECIALES ========== */
         .celda-placa {
             font-weight: 700;
             color: #12232b;
@@ -607,7 +601,6 @@ function badgeModalidad($modalidad) {
             margin-top: 3px;
         }
         
-        /* ========== CELDA KM ========== */
         .celda-km {
             display: flex;
             flex-direction: column;
@@ -651,7 +644,6 @@ function badgeModalidad($modalidad) {
             font-size: 11px;
         }
         
-        /* ========== BADGES ========== */
         .badge-estado {
             display: inline-flex;
             align-items: center;
@@ -700,7 +692,6 @@ function badgeModalidad($modalidad) {
         .badge-modalidad.propio { background: #16a085; color: white; }
         .badge-modalidad.sin-datos { background: #bdc3c7; color: white; }
         
-        /* ========== BOTÓN VER ========== */
         .btn-ver {
             background: #3498db;
             color: white;
@@ -720,7 +711,6 @@ function badgeModalidad($modalidad) {
             transform: translateY(-2px);
         }
         
-        /* ========== EMPTY STATE ========== */
         .empty-state {
             text-align: center;
             padding: 50px 20px;
@@ -739,7 +729,6 @@ function badgeModalidad($modalidad) {
             margin-bottom: 8px;
         }
         
-        /* ========== PAGINACIÓN ========== */
         .paginacion-container {
             display: flex;
             justify-content: space-between;
@@ -804,9 +793,189 @@ function badgeModalidad($modalidad) {
             color: #7f8c8d;
         }
         
+        /* ✅ NUEVO: MODAL EXPORTAR */
+        .modal-exportar-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(18, 35, 43, 0.7);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+            animation: fadeIn 0.2s ease;
+        }
+        
+        .modal-exportar-overlay.active { display: flex; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .modal-exportar-content {
+            background: white;
+            border-radius: 16px;
+            padding: 35px 40px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s ease;
+        }
+        
+        .modal-exportar-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .modal-exportar-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            background: #d4edda;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #1d6f42;
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+        
+        .modal-exportar-title {
+            font-size: 20px;
+            color: #12232b;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        .modal-exportar-subtitle {
+            font-size: 13px;
+            color: #7f8c8d;
+            margin-top: 4px;
+        }
+        
+        .modal-exportar-body {
+            margin-bottom: 25px;
+        }
+        
+        .modal-campo {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 18px;
+        }
+        
+        .modal-campo label {
+            font-size: 13px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .modal-campo label .obligatorio {
+            color: #e74c3c;
+        }
+        
+        .modal-campo input[type="date"] {
+            padding: 12px 16px;
+            border: 2px solid #d3d3d3;
+            border-radius: 10px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-campo input[type="date"]:focus {
+            outline: none;
+            border-color: #1d6f42;
+            box-shadow: 0 0 0 3px rgba(29,111,66,0.1);
+        }
+        
+        .modal-info {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            color: #1a5276;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            line-height: 1.5;
+        }
+        
+        .modal-info i {
+            color: #3498db;
+            font-size: 14px;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+        
+        .modal-error {
+            background: #fadbd8;
+            color: #922b21;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 10px;
+            display: none;
+            border-left: 3px solid #e74c3c;
+        }
+        
+        .modal-error.visible { display: block; }
+        
+        .modal-acciones {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .btn-modal {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            border: none;
+            text-decoration: none;
+        }
+        
+        .btn-modal-cancelar {
+            background: #ecf0f1;
+            color: #2c3e50;
+        }
+        
+        .btn-modal-cancelar:hover {
+            background: #d3d3d3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-modal-descargar {
+            background: #1d6f42;
+            color: white;
+        }
+        
+        .btn-modal-descargar:hover {
+            background: #145c34;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(29,111,66,0.3);
+        }
+        
         @media (max-width: 768px) {
             .filtros-grid { grid-template-columns: 1fr; }
             .kpis-grid { grid-template-columns: 1fr 1fr; }
+            .header .container { flex-wrap: wrap; gap: 10px; }
+            .header-botones { width: 100%; justify-content: flex-end; }
         }
     </style>
 </head>
@@ -820,6 +989,9 @@ function badgeModalidad($modalidad) {
             <div class="logo-titulo">Operación Vehicular | Rutas</div>
         </div>
         <div class="header-botones">
+            <button type="button" class="btn-exportar" onclick="abrirModalExportar()">
+                <i class="fas fa-file-excel"></i> Exportar a Excel
+            </button>
             <a href="../index.php" class="btn-volver">
                 <i class="fas fa-arrow-left"></i> Volver al panel
             </a>
@@ -829,7 +1001,6 @@ function badgeModalidad($modalidad) {
 
 <div class="container">
     
-    <!-- ===== MENSAJES ===== -->
     <?php if ($mensaje): ?>
         <div class="mensaje-exito" id="msgExito">
             <i class="fas fa-check-circle"></i>
@@ -844,42 +1015,31 @@ function badgeModalidad($modalidad) {
         </div>
     <?php endif; ?>
     
-    <!-- ===== KPIs ===== -->
+    <!-- KPIs -->
     <div class="kpis-grid">
         <div class="kpi-card">
-            <div class="kpi-icon info">
-                <i class="fas fa-route"></i>
-            </div>
+            <div class="kpi-icon info"><i class="fas fa-route"></i></div>
             <div class="kpi-info">
                 <h3><?php echo $kpi_total; ?></h3>
                 <p>Total rutas</p>
             </div>
         </div>
-        
         <div class="kpi-card">
-            <div class="kpi-icon warning">
-                <i class="fas fa-car-side"></i>
-            </div>
+            <div class="kpi-icon warning"><i class="fas fa-car-side"></i></div>
             <div class="kpi-info">
                 <h3><?php echo $kpi_en_curso; ?></h3>
                 <p>En curso</p>
             </div>
         </div>
-        
         <div class="kpi-card">
-            <div class="kpi-icon success">
-                <i class="fas fa-check-circle"></i>
-            </div>
+            <div class="kpi-icon success"><i class="fas fa-check-circle"></i></div>
             <div class="kpi-info">
                 <h3><?php echo $kpi_finalizadas; ?></h3>
                 <p>Finalizadas</p>
             </div>
         </div>
-        
         <div class="kpi-card">
-            <div class="kpi-icon danger">
-                <i class="fas fa-times-circle"></i>
-            </div>
+            <div class="kpi-icon danger"><i class="fas fa-times-circle"></i></div>
             <div class="kpi-info">
                 <h3><?php echo $kpi_canceladas; ?></h3>
                 <p>Canceladas</p>
@@ -887,7 +1047,7 @@ function badgeModalidad($modalidad) {
         </div>
     </div>
     
-    <!-- ===== FILTROS ===== -->
+    <!-- FILTROS -->
     <div class="filtros-card">
         <div class="filtros-titulo">
             <i class="fas fa-filter"></i>
@@ -896,7 +1056,6 @@ function badgeModalidad($modalidad) {
         
         <form method="GET" action="">
             <div class="filtros-grid">
-                
                 <div class="filtro-campo">
                     <label for="estado">Estado</label>
                     <select name="estado" id="estado">
@@ -941,7 +1100,6 @@ function badgeModalidad($modalidad) {
                     <label for="fecha_hasta">Hasta</label>
                     <input type="date" name="fecha_hasta" id="fecha_hasta" value="<?php echo htmlspecialchars($filtro_fecha_hasta); ?>">
                 </div>
-                
             </div>
             
             <div class="filtros-acciones">
@@ -957,9 +1115,8 @@ function badgeModalidad($modalidad) {
         </form>
     </div>
     
-    <!-- ===== TABLA ===== -->
+    <!-- TABLA -->
     <div class="tabla-card">
-        
         <?php if (count($rutas) > 0): ?>
             <div class="tabla-responsive">
                 <table>
@@ -985,7 +1142,6 @@ function badgeModalidad($modalidad) {
                                 $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion']);
                             }
                             
-                            // Calcular km recorridos
                             $km_salida = !empty($ruta['km_salida']) ? (int)$ruta['km_salida'] : null;
                             $km_llegada = !empty($ruta['km_llegada']) ? (int)$ruta['km_llegada'] : null;
                             $km_recorridos = null;
@@ -996,13 +1152,9 @@ function badgeModalidad($modalidad) {
                             <tr>
                                 <td>
                                     <span class="celda-placa"><?php echo htmlspecialchars($ruta['placa'] ?? '—'); ?></span>
-                                    <span class="badge-tipo <?php echo $tipo_info['clase']; ?>">
-                                        <?php echo $tipo_info['texto']; ?>
-                                    </span>
+                                    <span class="badge-tipo <?php echo $tipo_info['clase']; ?>"><?php echo $tipo_info['texto']; ?></span>
                                     <?php if (!empty($ruta['modalidad_vh'])): ?>
-                                        <span class="badge-modalidad <?php echo $modalidad_info['clase']; ?>">
-                                            <?php echo $modalidad_info['texto']; ?>
-                                        </span>
+                                        <span class="badge-modalidad <?php echo $modalidad_info['clase']; ?>"><?php echo $modalidad_info['texto']; ?></span>
                                     <?php endif; ?>
                                 </td>
                                 
@@ -1053,7 +1205,6 @@ function badgeModalidad($modalidad) {
                                     </div>
                                 </td>
                                 
-                                <!-- ✅ NUEVA COLUMNA: KM -->
                                 <td>
                                     <?php if ($km_salida !== null || $km_llegada !== null): ?>
                                         <div class="celda-km">
@@ -1100,7 +1251,6 @@ function badgeModalidad($modalidad) {
                 </table>
             </div>
             
-            <!-- ===== PAGINACIÓN ===== -->
             <?php if ($total_paginas > 1): ?>
                 <div class="paginacion-container">
                     <div class="paginacion-info">
@@ -1111,7 +1261,6 @@ function badgeModalidad($modalidad) {
                         <?php
                         $query_params = $_GET;
                         
-                        // Anterior
                         if ($pagina > 1):
                             $query_params['pagina'] = $pagina - 1;
                         ?>
@@ -1129,9 +1278,7 @@ function badgeModalidad($modalidad) {
                             $query_params['pagina'] = 1;
                         ?>
                             <a href="?<?php echo http_build_query($query_params); ?>">1</a>
-                            <?php if ($inicio > 2): ?>
-                                <span class="pagina-puntos">…</span>
-                            <?php endif; ?>
+                            <?php if ($inicio > 2): ?><span class="pagina-puntos">…</span><?php endif; ?>
                         <?php endif; ?>
                         
                         <?php for ($i = $inicio; $i <= $fin; $i++): 
@@ -1147,13 +1294,10 @@ function badgeModalidad($modalidad) {
                         <?php if ($fin < $total_paginas):
                             $query_params['pagina'] = $total_paginas;
                         ?>
-                            <?php if ($fin < $total_paginas - 1): ?>
-                                <span class="pagina-puntos">…</span>
-                            <?php endif; ?>
+                            <?php if ($fin < $total_paginas - 1): ?><span class="pagina-puntos">…</span><?php endif; ?>
                             <a href="?<?php echo http_build_query($query_params); ?>"><?php echo $total_paginas; ?></a>
                         <?php endif; ?>
                         
-                        <!-- Siguiente -->
                         <?php if ($pagina < $total_paginas):
                             $query_params['pagina'] = $pagina + 1;
                         ?>
@@ -1178,9 +1322,54 @@ function badgeModalidad($modalidad) {
                 </p>
             </div>
         <?php endif; ?>
-        
     </div>
     
+</div>
+
+<!-- ✅ NUEVO: MODAL EXPORTAR -->
+<div class="modal-exportar-overlay" id="modalExportar">
+    <div class="modal-exportar-content">
+        <div class="modal-exportar-header">
+            <div class="modal-exportar-icon">
+                <i class="fas fa-file-excel"></i>
+            </div>
+            <div>
+                <h2 class="modal-exportar-title">Exportar a Excel</h2>
+                <p class="modal-exportar-subtitle">Selecciona el rango de fechas a exportar</p>
+            </div>
+        </div>
+        
+        <div class="modal-exportar-body">
+            <div class="modal-campo">
+                <label for="export_fecha_inicio">Fecha inicio <span class="obligatorio">*</span></label>
+                <input type="date" id="export_fecha_inicio">
+            </div>
+            
+            <div class="modal-campo">
+                <label for="export_fecha_fin">Fecha fin <span class="obligatorio">*</span></label>
+                <input type="date" id="export_fecha_fin">
+            </div>
+            
+            <div class="modal-info">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    El filtro se aplica sobre la <strong>fecha de salida</strong> de la ruta.
+                    Se exportarán todas las rutas cuya fecha de salida esté dentro del rango seleccionado.
+                </div>
+            </div>
+            
+            <div class="modal-error" id="modalError"></div>
+        </div>
+        
+        <div class="modal-acciones">
+            <button type="button" class="btn-modal btn-modal-cancelar" onclick="cerrarModalExportar()">
+                <i class="fas fa-times"></i> Cancelar
+            </button>
+            <button type="button" class="btn-modal btn-modal-descargar" onclick="descargarExcel()">
+                <i class="fas fa-download"></i> Descargar Excel
+            </button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -1192,6 +1381,65 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() { msgExito.style.display = 'none'; }, 500);
         }, 3000);
     }
+});
+
+// ============================================
+// MODAL EXPORTAR
+// ============================================
+function abrirModalExportar() {
+    const hoy = new Date();
+    const hace30dias = new Date();
+    hace30dias.setDate(hoy.getDate() - 30);
+    
+    const fmt = (d) => d.toISOString().split('T')[0];
+    
+    document.getElementById('export_fecha_inicio').value = fmt(hace30dias);
+    document.getElementById('export_fecha_fin').value = fmt(hoy);
+    
+    document.getElementById('modalError').classList.remove('visible');
+    document.getElementById('modalError').textContent = '';
+    
+    document.getElementById('modalExportar').classList.add('active');
+}
+
+function cerrarModalExportar() {
+    document.getElementById('modalExportar').classList.remove('active');
+}
+
+function descargarExcel() {
+    const fecha_inicio = document.getElementById('export_fecha_inicio').value;
+    const fecha_fin = document.getElementById('export_fecha_fin').value;
+    const errorDiv = document.getElementById('modalError');
+    
+    errorDiv.classList.remove('visible');
+    errorDiv.textContent = '';
+    
+    if (!fecha_inicio || !fecha_fin) {
+        errorDiv.textContent = '❌ Debes seleccionar ambas fechas.';
+        errorDiv.classList.add('visible');
+        return;
+    }
+    
+    if (fecha_inicio > fecha_fin) {
+        errorDiv.textContent = '❌ La fecha de inicio no puede ser mayor a la fecha fin.';
+        errorDiv.classList.add('visible');
+        return;
+    }
+    
+    const url = 'exportar_excel.php?fecha_inicio=' + encodeURIComponent(fecha_inicio) + '&fecha_fin=' + encodeURIComponent(fecha_fin);
+    window.location.href = url;
+    
+    setTimeout(() => {
+        cerrarModalExportar();
+    }, 1500);
+}
+
+document.getElementById('modalExportar').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModalExportar();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') cerrarModalExportar();
 });
 </script>
 

@@ -1,6 +1,6 @@
 <?php
-// aplicaciones/otros/operacion_vehicular/ruta.php
-// Crear nueva ruta con Encuesta de Seguridad Vial + Checklist dinámico
+// aplicaciones/otros/operacion_vehicular/rutas.php
+// Crear nueva ruta con Encuesta de Seguridad Vial + Checklist dinámico + Acompañantes + Notificación a SST
 require_once '../../../includes/config.php';
 require_once '../../../includes/auth_check.php';
 
@@ -68,7 +68,6 @@ function getChecklists() {
     ];
 }
 
-// Mapeo medio → qué checklist usa
 function checklistSegunMedio($medio) {
     $mapa = [
         'PROPIO'       => 'CARRO',
@@ -77,6 +76,16 @@ function checklistSegunMedio($medio) {
         'NODRIZA'      => 'CAMION'
     ];
     return $mapa[$medio] ?? 'CARRO';
+}
+
+function permiteAcompanantes($medio, $modalidad_vehiculo) {
+    if ($medio === 'PROPIO') {
+        return true;
+    }
+    if ($medio === 'ORGANIZACION') {
+        return in_array($modalidad_vehiculo, ['USADO', 'TEST_DRIVE'], true);
+    }
+    return false;
 }
 
 $CHECKLISTS = getChecklists();
@@ -298,6 +307,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Checklist
     $checklist = isset($_POST['checklist']) && is_array($_POST['checklist']) ? $_POST['checklist'] : [];
     
+    // ✅ Acompañantes
+    $acompanantes_ids = isset($_POST['acompanantes']) && is_array($_POST['acompanantes']) 
+        ? array_map('intval', $_POST['acompanantes']) 
+        : [];
+    $acompanantes_ids = array_unique(array_filter($acompanantes_ids));
+    
     // Encuesta
     $conoce_codigo = isset($_POST['conoce_codigo']) ? (int) $_POST['conoce_codigo'] : 0;
     $salud_estable = isset($_POST['salud_estable']) ? (int) $_POST['salud_estable'] : 0;
@@ -309,14 +324,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $medios_validos = ['PROPIO', 'MOTO', 'ORGANIZACION', 'NODRIZA'];
     
-    // ✅ Validar checklist según medio
     $tipo_checklist = checklistSegunMedio($medio_transporte);
     $items_esperados = array_keys($CHECKLISTS[$tipo_checklist]['items']);
     $items_faltantes = array_diff($items_esperados, $checklist);
     $total_esperados = count($items_esperados);
     $total_marcados = count(array_intersect($items_esperados, $checklist));
     
-    // ✅ VALIDACIONES BÁSICAS
     if (empty($documento_conductor)) {
         $error = "❌ El número de documento es obligatorio";
     }
@@ -340,11 +353,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "❌ El kilometraje de salida no puede ser negativo";
     }
     elseif (!empty($items_faltantes)) {
-        // ✅ VALIDACIÓN ESTRICTA DEL CHECKLIST
         $error = "❌ Debes marcar TODOS los puntos del checklist para <strong>" 
                . $CHECKLISTS[$tipo_checklist]['titulo'] . "</strong>. "
                . "Marcaste <strong>{$total_marcados} de {$total_esperados}</strong>. "
                . "Faltan <strong>" . count($items_faltantes) . " item(s)</strong>.";
+    }
+    elseif (count($acompanantes_ids) > 4) {
+        $error = "❌ No puedes agregar más de 4 acompañantes.";
     }
     else {
         // ✅ VALIDAR PLACA CONTRA BD
@@ -369,7 +384,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $placa_valida = false;
         }
         else {
-            // 🔒 VALIDAR TIPO Y MODALIDAD SEGÚN EL MEDIO
             $filtros = filtrosSegunMedio($medio_transporte);
             $tipo_real = $vehiculo['tipo_vehiculo'];
             $modalidad_real = $vehiculo['modalidad_vehiculo'];
@@ -384,7 +398,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'MOTO' => 'Motocicleta',
                     'NODRIZA' => 'Vehículo nodriza'
                 ];
-                
                 $descripcion_esperada = '';
                 if ($medio_transporte === 'PROPIO') {
                     $descripcion_esperada = 'un CARRO con modalidad PROPIO (del empleado)';
@@ -395,7 +408,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($medio_transporte === 'NODRIZA') {
                     $descripcion_esperada = 'el CAMIÓN (nodriza)';
                 }
-                
                 $error = "❌ El vehículo <strong>{$vehiculo['placa']}</strong> no cumple con los requisitos del medio " 
                        . "<strong>" . ($nombres_medio[$medio_transporte] ?? $medio_transporte) . "</strong>. "
                        . "Debes elegir " . $descripcion_esperada . ".";
@@ -431,7 +443,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $dias_vencido = (int) $proximo_mant->diff($hoy)->days;
                         $fecha_mant_fmt = date('d/m/Y', strtotime($fecha_mant));
                         $fecha_prox_fmt = $proximo_mant->format('d/m/Y');
-                        
                         $error = "🔧 El vehículo <strong>{$vehiculo['placa']}</strong> tiene el <strong>mantenimiento VENCIDO</strong> "
                                . "hace <strong>{$dias_vencido} días</strong>. "
                                . "Último mantenimiento: <strong>{$fecha_mant_fmt}</strong>. "
@@ -480,6 +491,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $placa_valida = false;
                     }
                 }
+                
+                // ✅ VALIDAR ACOMPAÑANTES
+                if ($placa_valida && !empty($acompanantes_ids)) {
+                    $permite = permiteAcompanantes($medio_transporte, $vehiculo['modalidad_vehiculo']);
+                    if (!$permite) {
+                        $error = "❌ Este vehículo NO permite acompañantes según el medio y modalidad seleccionados.";
+                        $placa_valida = false;
+                    }
+                    elseif (in_array((int)$usuario_id, $acompanantes_ids, true)) {
+                        $error = "❌ No puedes agregarte a ti mismo como acompañante.";
+                        $placa_valida = false;
+                    }
+                    else {
+                        // Verificar que existan
+                        $placeholders = implode(',', array_fill(0, count($acompanantes_ids), '?'));
+                        $stmt = $pdo->prepare("
+                            SELECT COUNT(*) FROM usuarios 
+                            WHERE id IN ($placeholders) AND activo = 1
+                        ");
+                        $stmt->execute($acompanantes_ids);
+                        $encontrados = (int) $stmt->fetchColumn();
+                        
+                        if ($encontrados !== count($acompanantes_ids)) {
+                            $error = "❌ Uno o más acompañantes no existen o están inactivos.";
+                            $placa_valida = false;
+                        }
+                    }
+                }
             }
         }
         
@@ -511,7 +550,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $bloqueos[] = "❌ No puede haber tomado medicamentos que afecten sus condiciones";
             }
             
-            // Guardar checklist con tipo y detalles
             $checklist_guardar = [
                 'tipo' => $tipo_checklist,
                 'items' => array_intersect($items_esperados, $checklist)
@@ -525,10 +563,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         INSERT INTO ope_ruta 
                         (vehiculo_id, conductor_id, documento_conductor, motivo_viaje, km_salida, km_llegada, 
                          fecha_salida, fecha_regreso, autorizado_jefe, ciudad_origen, ciudad_destino, 
-                         medio_transporte, medio_transporte_otro, checklist_vh, conoce_codigo, 
+                         medio_transporte, checklist_vh, conoce_codigo, 
                          salud_estable, descanso_optimo, emocional_estable, alcohol_24h, sustancias_24h, 
                          medicamentos, bloqueado_hasta, estado, añadido_por, creado_el)
-                        VALUES (NULL, ?, ?, ?, ?, NULL, NOW(), NULL, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CANCELADO', ?, NOW())
+                        VALUES (NULL, ?, ?, ?, ?, NULL, NOW(), NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CANCELADO', ?, NOW())
                     ");
                     $stmt->execute([
                         $conductor_id,
@@ -560,14 +598,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . date('d/m/Y', strtotime('+1 day')) . "</strong>.";
             } else {
                 try {
+                    $pdo->beginTransaction();
+                    
                     $stmt = $pdo->prepare("
                         INSERT INTO ope_ruta 
                         (vehiculo_id, conductor_id, documento_conductor, motivo_viaje, km_salida, km_llegada,
                          fecha_salida, fecha_regreso, autorizado_jefe, ciudad_origen, ciudad_destino, 
-                         medio_transporte, medio_transporte_otro, checklist_vh, conoce_codigo, 
+                         medio_transporte, checklist_vh, conoce_codigo, 
                          salud_estable, descanso_optimo, emocional_estable, alcohol_24h, sustancias_24h,
                          medicamentos, bloqueado_hasta, estado, añadido_por, creado_el)
-                        VALUES (?, ?, ?, ?, ?, NULL, NOW(), ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'EN_CURSO', ?, NOW())
+                        VALUES (?, ?, ?, ?, ?, NULL, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'EN_CURSO', ?, NOW())
                     ");
                     $stmt->execute([
                         $vehiculo['id'],
@@ -591,11 +631,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $usuario_id
                     ]);
                     
+                    $ruta_id = $pdo->lastInsertId();
+                    
+                    // ✅ GUARDAR ACOMPAÑANTES
+                    if (!empty($acompanantes_ids)) {
+                        $placeholders = implode(',', array_fill(0, count($acompanantes_ids), '?'));
+                        $stmt_u = $pdo->prepare("
+                            SELECT id, nombre_completo, cargo, sede 
+                            FROM usuarios 
+                            WHERE id IN ($placeholders) AND activo = 1
+                        ");
+                        $stmt_u->execute($acompanantes_ids);
+                        $usuarios_acomp = $stmt_u->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        $stmt_ins = $pdo->prepare("
+                            INSERT INTO ope_ruta_acompanantes 
+                            (ruta_id, usuario_id, nombre_acompanante, cargo_acompanante, sede_acompanante)
+                            VALUES (?, ?, ?, ?, ?)
+                        ");
+                        foreach ($usuarios_acomp as $ua) {
+                            $stmt_ins->execute([
+                                $ruta_id,
+                                $ua['id'],
+                                $ua['nombre_completo'],
+                                $ua['cargo'] ?? null,
+                                $ua['sede'] ?? null
+                            ]);
+                        }
+                    }
+                    
+                    $pdo->commit();
+                    
+                    // ✅ NOTIFICAR A SST POR CORREO
+                    try {
+                        require_once '../../../includes/email_config.php';
+                        
+                        // Obtener acompañantes con nombre, cargo y sede
+                        $acomp_para_correo = [];
+                        if (!empty($acompanantes_ids)) {
+                            $placeholders_c = implode(',', array_fill(0, count($acompanantes_ids), '?'));
+                            $stmt_c = $pdo->prepare("
+                                SELECT nombre_completo, cargo, sede 
+                                FROM usuarios 
+                                WHERE id IN ($placeholders_c)
+                            ");
+                            $stmt_c->execute($acompanantes_ids);
+                            $usuarios_correo = $stmt_c->fetchAll(PDO::FETCH_ASSOC);
+                            
+                            $acomp_para_correo = array_map(function($a) {
+                                return [
+                                    'nombre' => $a['nombre_completo'] ?? '',
+                                    'cargo'  => $a['cargo'] ?? '',
+                                    'sede'   => $a['sede'] ?? ''
+                                ];
+                            }, $usuarios_correo);
+                        }
+                        
+                        // Datos para el correo
+                        $datos_ruta = [
+                            'id'                  => $ruta_id,
+                            'placa'               => $vehiculo['placa'],
+                            'medio_transporte'    => $medio_transporte,
+                            'modalidad_vehiculo'  => $vehiculo['modalidad_vehiculo'],
+                            'ciudad_origen'       => $ciudad_origen,
+                            'ciudad_destino'      => $ciudad_destino,
+                            'fecha_salida'        => date('Y-m-d H:i:s'),
+                            'fecha_regreso'       => $fecha_regreso . ' 23:59:59',
+                            'motivo_viaje'        => $motivo_viaje
+                        ];
+                        
+                        $datos_conductor = [
+                            'nombre_completo' => $conductor['nombre_completo'],
+                            'documento'       => $documento_conductor,
+                            'cargo'           => $conductor['cargo'] ?? '',
+                            'sede'            => $conductor['sede'] ?? ''
+                        ];
+                        
+                        enviarNotificacionRutaCreada($datos_ruta, $datos_conductor, $acomp_para_correo);
+                        
+                    } catch (Exception $e) {
+                        error_log("Error enviando correo a SST: " . $e->getMessage());
+                    }
+                    
                     $_SESSION['mensaje'] = "✅ Ruta creada correctamente. ¡Buen viaje!";
                     header('Location: index.php');
                     exit();
                     
                 } catch (PDOException $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
                     error_log("Error al crear ruta: " . $e->getMessage());
                     $error = "❌ Error al guardar la ruta. Intenta de nuevo.";
                 }
@@ -608,10 +731,12 @@ $hoy_str = date('d/m/Y');
 $hoy_input = date('Y-m-d');
 $manana_input = date('Y-m-d', strtotime('+1 day'));
 
-// Determinar medio seleccionado (para precargar el checklist correcto)
 $medio_actual = $_POST['medio_transporte'] ?? '';
 $tipo_checklist_actual = checklistSegunMedio($medio_actual);
 $checklist_seleccionados = $_POST['checklist'] ?? [];
+$acompanantes_seleccionados = isset($_POST['acompanantes']) && is_array($_POST['acompanantes']) 
+    ? array_map('intval', $_POST['acompanantes']) 
+    : [];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -798,7 +923,6 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
             margin-top: -4px;
         }
         
-        /* AUTOCOMPLETE PLACA */
         .autocomplete-wrapper { position: relative; }
         
         .autocomplete-dropdown {
@@ -1016,7 +1140,6 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
         .radio-option.si:has(input:checked) { background: #d5f5e3; border-color: #27ae60; }
         .radio-option.no:has(input:checked) { background: #fadbd8; border-color: #e74c3c; }
         
-        /* CHECKLIST */
         .checklist-header-info {
             display: flex;
             align-items: center;
@@ -1127,7 +1250,105 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
         
         .checklist-aviso i { color: #3498db; font-size: 16px; }
         
-        /* ENCUESTA */
+        .acompanantes-aviso {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            color: #1a5276;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        
+        .acompanantes-aviso i {
+            color: #3498db;
+            font-size: 16px;
+            margin-top: 2px;
+        }
+        
+        .acompanantes-lista {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .acompanante-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #e8f4f8;
+            color: #1a5276;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid #aed6f1;
+        }
+        
+        .acompanante-chip .chip-info {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+        
+        .acompanante-chip .chip-nombre {
+            font-weight: 600;
+        }
+        
+        .acompanante-chip .chip-detalle {
+            font-size: 10px;
+            color: #5d6d7e;
+            opacity: 0.9;
+        }
+        
+        .acompanante-chip .btn-quitar {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .acompanante-chip .btn-quitar:hover {
+            background: #c0392b;
+            transform: scale(1.1);
+        }
+        
+        .acompanantes-contador {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        
+        .acompanantes-contador.lleno {
+            background: #fdebd0;
+            color: #a04000;
+        }
+        
+        .acompanantes-contador strong {
+            color: #12232b;
+        }
+        
+        .acompanantes-contador.lleno strong {
+            color: #a04000;
+        }
+        
         .seccion-encuesta {
             background: #f8f9fa;
             border-left: 4px solid #173742;
@@ -1226,7 +1447,7 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
                 <?php echo $error; ?>
             </div>
             <div style="text-align: center; margin-top: 20px;">
-                <a href="ruta.php" class="btn btn-cancelar">
+                <a href="rutas.php" class="btn btn-cancelar">
                     <i class="fas fa-redo"></i> Volver a intentar
                 </a>
             </div>
@@ -1380,7 +1601,6 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
                             autocomplete="off"
                         >
                         <div class="autocomplete-dropdown" id="autocomplete_dropdown">
-                            <!-- Contenido dinámico -->
                         </div>
                     </div>
                     <div id="resultado_placa"></div>
@@ -1410,9 +1630,50 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
             </div>
         </div>
         
-        <!-- ============================================ -->
-        <!-- CHECKLIST DINÁMICO (según medio) -->
-        <!-- ============================================ -->
+        <!-- ACOMPAÑANTES -->
+        <div class="card" id="card_acompanantes" style="display: none;">
+            <div class="card-title">
+                <i class="fas fa-users"></i>
+                Acompañantes
+                <span style="font-size: 13px; font-weight: 400; color: #7f8c8d;">(Máximo 4)</span>
+            </div>
+            
+            <div class="acompanantes-aviso">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    Este vehículo permite llevar acompañantes. Busca por nombre, usuario o cargo y agrega hasta <strong>4 personas</strong>.
+                </div>
+            </div>
+            
+            <div class="form-campo full-width" id="campo_buscar_acompanante">
+                <label for="buscar_acompanante"><i class="fas fa-search"></i> Buscar acompañante</label>
+                <div class="autocomplete-wrapper">
+                    <input 
+                        type="text" 
+                        id="buscar_acompanante" 
+                        placeholder="Escribe nombre, usuario o cargo..."
+                        autocomplete="off"
+                        oninput="onInputBuscarAcompanante(this)"
+                        onfocus="onFocusBuscarAcompanante()"
+                        onblur="onBlurBuscarAcompanante()"
+                    >
+                    <div class="autocomplete-dropdown" id="dropdown_acompanantes"></div>
+                </div>
+            </div>
+            
+            <div class="acompanantes-lista" id="lista_acompanantes"></div>
+            
+            <div class="acompanantes-contador" id="contador_acompanantes">
+                <span><i class="fas fa-users"></i> Acompañantes: <strong><span id="num_acompanantes">0</span> / 4</strong></span>
+                <span id="aviso_limite" style="display: none; color: #a04000; font-weight: 600;">
+                    <i class="fas fa-exclamation-triangle"></i> Límite alcanzado
+                </span>
+            </div>
+            
+            <div id="hidden_acompanantes"></div>
+        </div>
+        
+        <!-- CHECKLIST -->
         <div class="card" id="card_checklist" style="display: none;">
             <div class="card-title">
                 <i class="fas fa-clipboard-check"></i>
@@ -1421,7 +1682,7 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
             
             <div class="checklist-aviso">
                 <i class="fas fa-info-circle"></i>
-                <span>Debes marcar <strong>TODOS los puntos</strong> del checklist para poder continuar. No se puede enviar el formulario si falta algún item.</span>
+                <span>Debes marcar <strong>TODOS los puntos</strong> del checklist para poder continuar.</span>
             </div>
             
             <div class="checklist-header-info">
@@ -1435,9 +1696,7 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
                 </div>
             </div>
             
-            <div class="checklist-grid" id="checklist_grid">
-                <!-- Se llena dinámicamente con JS -->
-            </div>
+            <div class="checklist-grid" id="checklist_grid"></div>
         </div>
         
         <div class="card">
@@ -1455,7 +1714,7 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
                     'emocional_estable' => '14. ¿Se encuentra emocionalmente estable para conducir?',
                     'alcohol_24h' => '15. ¿Consumió bebidas alcohólicas en las últimas 24 horas?',
                     'sustancias_24h' => '16. ¿Consumió algún tipo de sustancias psicoactivas en las últimas 24 horas?',
-                    'medicamentos' => '17. ¿Tomó algún tipo de medicamento que afecte sus condiciones de salud? (sueño, depresión, relación, etc.)'
+                    'medicamentos' => '17. ¿Tomó algún tipo de medicamento que afecte sus condiciones de salud?'
                 ];
                 
                 $preguntas_invertidas = ['alcohol_24h', 'sustancias_24h', 'medicamentos'];
@@ -1501,9 +1760,6 @@ $checklist_seleccionados = $_POST['checklist'] ?? [];
     
 </div>
 
-<!-- ============================================ -->
-<!-- DATOS DE CHECKLISTS PASADOS A JS -->
-<!-- ============================================ -->
 <script>
 const CHECKLISTS = <?php echo json_encode($CHECKLISTS, JSON_UNESCAPED_UNICODE); ?>;
 const CHECKLIST_POR_MEDIO = {
@@ -1513,6 +1769,8 @@ const CHECKLIST_POR_MEDIO = {
     'NODRIZA': 'CAMION'
 };
 const CHECKLIST_SELECCIONADOS = <?php echo json_encode($checklist_seleccionados, JSON_UNESCAPED_UNICODE); ?>;
+const ACOMPANANTES_SELECCIONADOS = <?php echo json_encode($acompanantes_seleccionados, JSON_UNESCAPED_UNICODE); ?>;
+const USUARIO_ACTUAL_ID = <?php echo (int)$usuario_id; ?>;
 </script>
 
 <script>
@@ -1526,10 +1784,14 @@ let blurTimeout = null;
 let kmActualVehiculo = 0;
 let kmSalidaValido = false;
 let checklistCompleto = false;
+let permiteAcompanantesFlag = false;
+let modalidadVehiculoActual = '';
 
-// ============================================
-// CONFIGURACIÓN DE MEDIOS
-// ============================================
+let acompanantes = [];
+let timeoutBuscarAcomp = null;
+let blurAcompTimeout = null;
+const MAX_ACOMPANANTES = 4;
+
 const CONFIG_MEDIOS = {
     'PROPIO': {
         nombre_tipo: 'CARRO PROPIO',
@@ -1554,14 +1816,190 @@ const CONFIG_MEDIOS = {
 };
 
 // ============================================
-// RENDERIZAR CHECKLIST SEGÚN MEDIO
+// ACOMPAÑANTES
+// ============================================
+function actualizarVisibilidadAcompanantes() {
+    const card = document.getElementById('card_acompanantes');
+    const medio = document.getElementById('medio_transporte').value;
+    
+    let debeMostrar = false;
+    
+    if (placaValida && placaSeleccionada) {
+        if (medio === 'PROPIO') {
+            debeMostrar = true;
+        } else if (medio === 'ORGANIZACION') {
+            debeMostrar = (modalidadVehiculoActual === 'USADO' || modalidadVehiculoActual === 'TEST_DRIVE');
+        }
+    }
+    
+    permiteAcompanantesFlag = debeMostrar;
+    
+    if (debeMostrar) {
+        card.style.display = 'block';
+    } else {
+        card.style.display = 'none';
+        acompanantes = [];
+        renderizarAcompanantes();
+    }
+}
+
+function renderizarAcompanantes() {
+    const lista = document.getElementById('lista_acompanantes');
+    const numSpan = document.getElementById('num_acompanantes');
+    const contador = document.getElementById('contador_acompanantes');
+    const avisoLimite = document.getElementById('aviso_limite');
+    const inputBuscar = document.getElementById('buscar_acompanante');
+    const hidden = document.getElementById('hidden_acompanantes');
+    
+    lista.innerHTML = '';
+    hidden.innerHTML = '';
+    
+    acompanantes.forEach(a => {
+        const chip = document.createElement('div');
+        chip.className = 'acompanante-chip';
+        chip.innerHTML = `
+            <div class="chip-info">
+                <span class="chip-nombre">${escapeHtml(a.nombre)}</span>
+                <span class="chip-detalle">${escapeHtml(a.cargo || 'Sin cargo')}${a.sede ? ' · ' + escapeHtml(a.sede) : ''}</span>
+            </div>
+            <button type="button" class="btn-quitar" onclick="quitarAcompanante(${a.id})" title="Quitar">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        lista.appendChild(chip);
+        
+        const inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'acompanantes[]';
+        inp.value = a.id;
+        hidden.appendChild(inp);
+    });
+    
+    numSpan.textContent = acompanantes.length;
+    
+    const lleno = acompanantes.length >= MAX_ACOMPANANTES;
+    contador.classList.toggle('lleno', lleno);
+    avisoLimite.style.display = lleno ? 'inline' : 'none';
+    inputBuscar.disabled = lleno;
+    inputBuscar.placeholder = lleno ? 'Límite alcanzado (4/4)' : 'Escribe nombre, usuario o cargo...';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function quitarAcompanante(id) {
+    acompanantes = acompanantes.filter(a => a.id !== id);
+    renderizarAcompanantes();
+}
+
+function onInputBuscarAcompanante(input) {
+    const valor = input.value.trim();
+    const dropdown = document.getElementById('dropdown_acompanantes');
+    
+    if (valor.length < 2) {
+        dropdown.classList.remove('visible');
+        dropdown.innerHTML = '';
+        return;
+    }
+    
+    clearTimeout(timeoutBuscarAcomp);
+    timeoutBuscarAcomp = setTimeout(() => buscarUsuariosAjax(valor), 300);
+}
+
+function buscarUsuariosAjax(termino) {
+    const dropdown = document.getElementById('dropdown_acompanantes');
+    
+    if (acompanantes.length >= MAX_ACOMPANANTES) {
+        dropdown.classList.remove('visible');
+        return;
+    }
+    
+    dropdown.innerHTML = '<div class="autocomplete-loading"><i class="fas fa-spinner fa-spin"></i> Buscando...</div>';
+    dropdown.classList.add('visible');
+    
+    fetch('buscar_usuarios.php?q=' + encodeURIComponent(termino))
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) {
+                dropdown.innerHTML = '<div class="autocomplete-vacio"><i class="fas fa-exclamation-circle"></i>Error al buscar</div>';
+                return;
+            }
+            
+            const sugs = data.sugerencias || [];
+            const idsSeleccionados = acompanantes.map(a => a.id);
+            const filtrados = sugs.filter(s => !idsSeleccionados.includes(s.id));
+            
+            if (filtrados.length === 0) {
+                dropdown.innerHTML = '<div class="autocomplete-vacio"><i class="fas fa-user-slash"></i>No se encontraron usuarios</div>';
+                return;
+            }
+            
+            let html = '';
+            filtrados.forEach(u => {
+                const detalle = [u.cargo, u.sede].filter(Boolean).join(' · ');
+                html += `
+                    <div class="autocomplete-item disponible" onclick="agregarAcompanante(${u.id}, '${escapeHtml(u.nombre).replace(/'/g, "\\'")}', '${escapeHtml(u.cargo || '').replace(/'/g, "\\'")}', '${escapeHtml(u.sede || '').replace(/'/g, "\\'")}')">
+                        <div class="autocomplete-icon disponible">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="autocomplete-info">
+                            <div class="autocomplete-placa">${escapeHtml(u.nombre)}</div>
+                            ${detalle ? `<div class="autocomplete-detalle">${escapeHtml(detalle)}</div>` : ''}
+                        </div>
+                        <span class="autocomplete-badge disponible"><i class="fas fa-plus"></i></span>
+                    </div>
+                `;
+            });
+            
+            dropdown.innerHTML = html;
+            dropdown.classList.add('visible');
+        })
+        .catch(err => {
+            console.error(err);
+            dropdown.innerHTML = '<div class="autocomplete-vacio"><i class="fas fa-exclamation-circle"></i>Error</div>';
+        });
+}
+
+function agregarAcompanante(id, nombre, cargo, sede) {
+    if (acompanantes.length >= MAX_ACOMPANANTES) {
+        alert('❌ Ya alcanzaste el máximo de 4 acompañantes');
+        return;
+    }
+    if (acompanantes.some(a => a.id === id)) {
+        return;
+    }
+    acompanantes.push({ id, nombre, cargo, sede });
+    renderizarAcompanantes();
+    
+    document.getElementById('buscar_acompanante').value = '';
+    document.getElementById('dropdown_acompanantes').classList.remove('visible');
+}
+
+function onFocusBuscarAcompanante() {
+    clearTimeout(blurAcompTimeout);
+    const dropdown = document.getElementById('dropdown_acompanantes');
+    if (dropdown.innerHTML.trim() !== '' && acompanantes.length < MAX_ACOMPANANTES) {
+        dropdown.classList.add('visible');
+    }
+}
+
+function onBlurBuscarAcompanante() {
+    blurAcompTimeout = setTimeout(() => {
+        document.getElementById('dropdown_acompanantes').classList.remove('visible');
+    }, 200);
+}
+
+// ============================================
+// CHECKLIST
 // ============================================
 function renderizarChecklist(medio) {
     const cardChecklist = document.getElementById('card_checklist');
     const grid = document.getElementById('checklist_grid');
     const tituloTipo = document.getElementById('checklist_titulo');
-    const contador = document.getElementById('checklist_contador');
-    const contadorTexto = document.getElementById('checklist_contador_texto');
     
     grid.innerHTML = '';
     grid.classList.remove('moto', 'camion');
@@ -1601,9 +2039,6 @@ function renderizarChecklist(medio) {
     actualizarContadorChecklist();
 }
 
-// ============================================
-// CONTADOR DEL CHECKLIST
-// ============================================
 function actualizarContadorChecklist() {
     const checkboxes = document.querySelectorAll('#checklist_grid input[type="checkbox"]');
     const total = checkboxes.length;
@@ -1618,21 +2053,16 @@ function actualizarContadorChecklist() {
     contador.classList.toggle('completo', marcados === total && total > 0);
     
     checklistCompleto = (marcados === total && total > 0);
-    
-    // Actualizar estado del botón (junto con placa + km)
     actualizarBotonEnviar();
 }
 
-// ============================================
-// ACTUALIZAR BOTÓN ENVIAR
-// ============================================
 function actualizarBotonEnviar() {
     const btn = document.getElementById('btn_crear_ruta');
     btn.disabled = !(placaValida && kmSalidaValido && checklistCompleto);
 }
 
 // ============================================
-// ACTUALIZAR MEDIO DE TRANSPORTE
+// MEDIO TRANSPORTE
 // ============================================
 function actualizarMedioTransporte() {
     const medio = document.getElementById('medio_transporte').value;
@@ -1664,6 +2094,7 @@ function actualizarMedioTransporte() {
     placaValida = false;
     kmSalidaValido = false;
     kmActualVehiculo = 0;
+    modalidadVehiculoActual = '';
     hintKm.textContent = 'Ingresa el km que marca el tablero actualmente. Debe ser igual o mayor al km registrado.';
     
     if (medio && CONFIG_MEDIOS[medio]) {
@@ -1676,13 +2107,13 @@ function actualizarMedioTransporte() {
         hint.style.fontWeight = '500';
     }
     
-    // Renderizar checklist
     renderizarChecklist(medio);
+    actualizarVisibilidadAcompanantes();
     actualizarBotonEnviar();
 }
 
 // ============================================
-// INPUT PLACA
+// PLACA
 // ============================================
 function onInputPlaca(input) {
     const valorLimpio = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
@@ -1692,6 +2123,7 @@ function onInputPlaca(input) {
     placaValida = false;
     placaSeleccionada = null;
     kmActualVehiculo = 0;
+    modalidadVehiculoActual = '';
     
     const campoKmSalida = document.getElementById('campo_km_salida');
     campoKmSalida.style.display = 'none';
@@ -1700,6 +2132,7 @@ function onInputPlaca(input) {
     document.getElementById('resultado_km').innerHTML = '';
     kmSalidaValido = false;
     
+    actualizarVisibilidadAcompanantes();
     actualizarBotonEnviar();
     
     const resultado = document.getElementById('resultado_placa');
@@ -1712,17 +2145,11 @@ function onInputPlaca(input) {
     debounceBuscar(valorLimpio);
 }
 
-// ============================================
-// DEBOUNCE
-// ============================================
 function debounceBuscar(termino) {
     clearTimeout(timeoutBusqueda);
     timeoutBusqueda = setTimeout(() => buscarPlacas(termino), 300);
 }
 
-// ============================================
-// BUSCAR PLACAS
-// ============================================
 function buscarPlacas(termino) {
     const dropdown = document.getElementById('autocomplete_dropdown');
     const medio = document.getElementById('medio_transporte').value;
@@ -1770,12 +2197,14 @@ function buscarPlacas(termino) {
                 const badgeClass = sug.puede_usar ? 'disponible' : 'no-disponible';
                 const badgeText = sug.puede_usar ? 'Disponible' : (sug.motivo || 'No disponible');
                 const kmFmt = new Intl.NumberFormat('es-CO').format(sug.kilometraje || 0);
+                const mod = sug.modalidad_vehiculo || '';
                 
                 html += `
                     <div class="autocomplete-item ${disabledClass}" 
                          data-placa="${sug.placa}" 
                          data-id="${sug.id}"
-                         ${sug.puede_usar ? `onclick="seleccionarPlaca('${sug.placa}', ${sug.id}, '${detalle.replace(/'/g, "\\'")}', ${sug.kilometraje || 0})"` : ''}>
+                         data-modalidad="${mod}"
+                         ${sug.puede_usar ? `onclick="seleccionarPlaca('${sug.placa}', ${sug.id}, '${detalle.replace(/'/g, "\\'")}', ${sug.kilometraje || 0}, '${mod}')"` : ''}>
                         <div class="autocomplete-icon ${iconClass}">
                             <i class="fas ${icono}"></i>
                         </div>
@@ -1800,12 +2229,14 @@ function buscarPlacas(termino) {
                 const vehiculoExacto = sugerencias.find(s => s.placa === termino);
                 if (vehiculoExacto) {
                     kmActualVehiculo = vehiculoExacto.kilometraje || 0;
+                    modalidadVehiculoActual = vehiculoExacto.modalidad_vehiculo || '';
                 }
                 
                 document.getElementById('resultado_placa').innerHTML = 
                     '<div class="mensaje-placa ok"><i class="fas fa-check-circle"></i> Placa válida y disponible</div>';
                 
                 mostrarCampoKm(kmActualVehiculo);
+                actualizarVisibilidadAcompanantes();
             }
             
             actualizarBotonEnviar();
@@ -1816,9 +2247,6 @@ function buscarPlacas(termino) {
         });
 }
 
-// ============================================
-// MOSTRAR CAMPO KM
-// ============================================
 function mostrarCampoKm(kmActual) {
     const campoKmSalida = document.getElementById('campo_km_salida');
     const inputKm = document.getElementById('km_salida');
@@ -1851,9 +2279,6 @@ function mostrarCampoKm(kmActual) {
     validarKmSalida();
 }
 
-// ============================================
-// VALIDAR KM SALIDA
-// ============================================
 function validarKmSalida() {
     const inputKm = document.getElementById('km_salida');
     const resultado = document.getElementById('resultado_km');
@@ -1905,10 +2330,7 @@ function validarKmSalida() {
     actualizarBotonEnviar();
 }
 
-// ============================================
-// SELECCIONAR PLACA
-// ============================================
-function seleccionarPlaca(placa, id, detalle, kmActual) {
+function seleccionarPlaca(placa, id, detalle, kmActual, modalidad) {
     const input = document.getElementById('placa');
     input.value = placa;
     input.classList.remove('placa-error');
@@ -1917,17 +2339,16 @@ function seleccionarPlaca(placa, id, detalle, kmActual) {
     placaValida = true;
     placaSeleccionada = { placa, id, detalle };
     kmActualVehiculo = kmActual || 0;
+    modalidadVehiculoActual = modalidad || '';
     
     document.getElementById('resultado_placa').innerHTML = 
         `<div class="mensaje-placa ok"><i class="fas fa-check-circle"></i> ${placa} — ${detalle || 'Disponible'}</div>`;
     
     mostrarCampoKm(kmActualVehiculo);
+    actualizarVisibilidadAcompanantes();
     ocultarDropdown();
 }
 
-// ============================================
-// FOCUS / BLUR / OCULTAR
-// ============================================
 function onFocusPlaca() {
     clearTimeout(blurTimeout);
     const dropdown = document.getElementById('autocomplete_dropdown');
@@ -1946,8 +2367,6 @@ function ocultarDropdown() {
 // VALIDAR ANTES DE ENVIAR
 // ============================================
 document.getElementById('form_ruta').addEventListener('submit', function(e) {
-    const medio = document.getElementById('medio_transporte').value;
-    
     if (!placaValida) {
         e.preventDefault();
         alert('❌ Debes seleccionar una placa válida del autocompletado');
@@ -1973,20 +2392,23 @@ document.getElementById('form_ruta').addEventListener('submit', function(e) {
         document.getElementById('card_checklist').scrollIntoView({ behavior: 'smooth', block: 'center' });
         return false;
     }
+    
+    if (permiteAcompanantesFlag && acompanantes.length > MAX_ACOMPANANTES) {
+        e.preventDefault();
+        alert(`❌ No puedes agregar más de ${MAX_ACOMPANANTES} acompañantes`);
+        return false;
+    }
 });
 
 // ============================================
 // AL CARGAR
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
-    const medioInicial = document.getElementById('medio_transporte').value;
     actualizarMedioTransporte();
     
-    // Si había una placa válida precargada (por POST con error), revalidar
     <?php if (!empty($_POST['placa'])): ?>
     const placaPrevia = document.getElementById('placa').value;
     if (placaPrevia) {
-        // Disparar búsqueda para revalidar
         onInputPlaca(document.getElementById('placa'));
     }
     <?php endif; ?>

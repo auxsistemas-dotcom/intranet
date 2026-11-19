@@ -642,3 +642,194 @@ function enviarNotificacionColaboradorPQRS($email_colaborador, $nombre_colaborad
 
     return enviarCorreo($email_colaborador, $asunto_email, $mensaje_html, $mensaje_texto);
 }
+
+// ============================================
+// CORREO: NOTIFICACIÓN DE NUEVA RUTA A SST
+// ============================================
+function enviarNotificacionRutaCreada($datos_ruta, $datos_conductor, $acompanantes = []) {
+    
+    $destinatario = 'saludocupacional@armotor.com';
+    
+    $ruta_id        = $datos_ruta['id']                 ?? 0;
+    $placa          = $datos_ruta['placa']              ?? '';
+    $medio          = $datos_ruta['medio_transporte']   ?? '';
+    $modalidad      = $datos_ruta['modalidad_vehiculo'] ?? '';
+    $ciudad_origen  = $datos_ruta['ciudad_origen']      ?? '';
+    $ciudad_destino = $datos_ruta['ciudad_destino']     ?? '';
+    $fecha_salida   = $datos_ruta['fecha_salida']       ?? '';
+    $fecha_regreso  = $datos_ruta['fecha_regreso']      ?? '';
+    $motivo_viaje   = $datos_ruta['motivo_viaje']       ?? '';
+    
+    $nombre_conductor = $datos_conductor['nombre_completo'] ?? '';
+    $documento        = $datos_conductor['documento']       ?? '';
+    $cargo            = $datos_conductor['cargo']           ?? '';
+    $sede             = $datos_conductor['sede']            ?? '';
+    
+    // ✅ Tipo de vehículo legible según medio + modalidad
+    if ($medio === 'PROPIO') {
+        $tipo_vehiculo = 'Vehículo propio';
+    } elseif ($medio === 'ORGANIZACION') {
+        $modalidades_legibles = [
+            'NUEVO'      => 'NUEVO',
+            'USADO'      => 'USADO',
+            'TEST_DRIVE' => 'TEST DRIVE',
+            'PROPIO'     => 'PROPIO'
+        ];
+        $mod_texto = $modalidades_legibles[$modalidad] ?? $modalidad;
+        $tipo_vehiculo = 'Vehículo corporativo ' . $mod_texto;
+    } elseif ($medio === 'MOTO') {
+        $tipo_vehiculo = 'Motocicleta';
+    } elseif ($medio === 'NODRIZA') {
+        $tipo_vehiculo = 'Vehículo nodriza';
+    } else {
+        $tipo_vehiculo = $medio;
+    }
+    
+    // Fechas legibles
+    $fecha_salida_fmt  = !empty($fecha_salida)  ? date('d/m/Y H:i', strtotime($fecha_salida))  : '—';
+    $fecha_regreso_fmt = !empty($fecha_regreso) ? date('d/m/Y H:i', strtotime($fecha_regreso)) : '—';
+    
+    // HTML de acompañantes
+    $html_acompanantes = '';
+    if (!empty($acompanantes)) {
+        $html_acompanantes .= '
+                    <div class="detalle-item">
+                        <div class="label">👥 Acompañantes (' . count($acompanantes) . ')</div>
+                        <div class="value">
+                            <ul style="margin: 5px 0 0 20px; padding: 0;">';
+        foreach ($acompanantes as $a) {
+            $nombre_a = htmlspecialchars($a['nombre'] ?? '');
+            $cargo_a  = htmlspecialchars($a['cargo'] ?? 'Sin cargo');
+            $sede_a   = htmlspecialchars($a['sede'] ?? '');
+            $detalle_a = $cargo_a . ($sede_a ? ' · ' . $sede_a : '');
+            $html_acompanantes .= '<li><strong>' . $nombre_a . '</strong> — ' . $detalle_a . '</li>';
+        }
+        $html_acompanantes .= '
+                            </ul>
+                        </div>
+                    </div>';
+    } else {
+        $html_acompanantes = '
+                    <div class="detalle-item">
+                        <div class="label">👥 Acompañantes</div>
+                        <div class="value" style="color: #7f8c8d;">Sin acompañantes</div>
+                    </div>';
+    }
+    
+    $mensaje_html = '
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial, sans-serif; color: #2c3e50; line-height: 1.6; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+            .header { background: linear-gradient(135deg, #12232b, #173742); padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .header h1 { color: #ffc107; margin: 0; font-size: 22px; }
+            .header p { color: #8aa8b8; margin: 8px 0 0; font-size: 13px; }
+            .content { background: white; padding: 30px 25px; border-radius: 0 0 10px 10px; }
+            .radicado-box { background: #e8f4f8; border: 2px solid #3498db; border-radius: 10px; padding: 15px; text-align: center; margin: 20px 0; }
+            .radicado-label { font-size: 11px; color: #1a5276; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin-bottom: 5px; }
+            .radicado-codigo { font-size: 22px; font-weight: 800; color: #2980b9; letter-spacing: 1.5px; margin: 0; }
+            .detalle { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; }
+            .detalle-item { padding: 10px 0; border-bottom: 1px solid #e9ecef; }
+            .detalle-item:last-child { border-bottom: none; }
+            .detalle-item .label { font-weight: 600; color: #7f8c8d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .detalle-item .value { font-size: 15px; color: #12232b; margin-top: 3px; }
+            .ruta-banner { background: #d5f5e3; border-left: 4px solid #27ae60; border-radius: 8px; padding: 15px; margin: 15px 0; font-size: 16px; font-weight: 600; color: #1a7a3a; }
+            .footer { text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e9ecef; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🚗 Nueva Ruta Iniciada</h1>
+                <p>Sistema Intranet - ARMOTOR</p>
+            </div>
+            <div class="content">
+                <p>Hola equipo de <strong>SST</strong>,</p>
+
+                <p>Se ha registrado una nueva ruta en el sistema. A continuación los detalles:</p>
+
+                <div class="radicado-box">
+                    <div class="radicado-label">Ruta #</div>
+                    <p class="radicado-codigo">' . str_pad($ruta_id, 6, '0', STR_PAD_LEFT) . '</p>
+                </div>
+
+                <div class="ruta-banner">
+                    🗺️ ' . htmlspecialchars($ciudad_origen) . ' → ' . htmlspecialchars($ciudad_destino) . '
+                </div>
+
+                <div class="detalle">
+                    <div class="detalle-item">
+                        <div class="label">🚗 Vehículo</div>
+                        <div class="value"><strong>' . htmlspecialchars($tipo_vehiculo) . ' (' . htmlspecialchars($placa) . ')</strong></div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">👤 Conductor</div>
+                        <div class="value">' . htmlspecialchars($nombre_conductor) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">🪪 Documento</div>
+                        <div class="value">' . htmlspecialchars($documento) . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">💼 Cargo</div>
+                        <div class="value">' . htmlspecialchars($cargo) . ($sede ? ' · ' . htmlspecialchars($sede) : '') . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📅 Fecha de salida</div>
+                        <div class="value">' . $fecha_salida_fmt . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📅 Regreso estimado</div>
+                        <div class="value">' . $fecha_regreso_fmt . '</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="label">📝 Motivo del viaje</div>
+                        <div class="value">' . nl2br(htmlspecialchars($motivo_viaje)) . '</div>
+                    </div>
+                    ' . $html_acompanantes . '
+                </div>
+
+                <p style="font-size: 13px; color: #7f8c8d; text-align: center; margin-top: 20px;">
+                    Este es un correo informativo automático. No requiere acción.
+                </p>
+            </div>
+            <div class="footer">
+                <p><strong>ARMOTOR</strong> - Sistema de Operación Vehicular</p>
+                <p>Este es un mensaje automático. Por favor no respondas a este correo.</p>
+            </div>
+        </div>
+    </body>
+    </html>';
+    
+    // Texto plano
+    $mensaje_texto  = "Nueva Ruta Iniciada - ARMOTOR\n";
+    $mensaje_texto .= "================================\n\n";
+    $mensaje_texto .= "RUTA #" . str_pad($ruta_id, 6, '0', STR_PAD_LEFT) . "\n\n";
+    $mensaje_texto .= "Vehículo: " . $tipo_vehiculo . " (" . $placa . ")\n";
+    $mensaje_texto .= "Conductor: " . $nombre_conductor . "\n";
+    $mensaje_texto .= "Documento: " . $documento . "\n";
+    $mensaje_texto .= "Cargo: " . $cargo . ($sede ? ' · ' . $sede : '') . "\n";
+    $mensaje_texto .= "Ruta: " . $ciudad_origen . " → " . $ciudad_destino . "\n";
+    $mensaje_texto .= "Salida: " . $fecha_salida_fmt . "\n";
+    $mensaje_texto .= "Regreso estimado: " . $fecha_regreso_fmt . "\n";
+    $mensaje_texto .= "Motivo: " . $motivo_viaje . "\n";
+    
+    if (!empty($acompanantes)) {
+        $mensaje_texto .= "\nAcompañantes (" . count($acompanantes) . "):\n";
+        foreach ($acompanantes as $a) {
+            $mensaje_texto .= "- " . ($a['nombre'] ?? '') . " (" . ($a['cargo'] ?? 'Sin cargo') . ")\n";
+        }
+    } else {
+        $mensaje_texto .= "\nSin acompañantes.\n";
+    }
+    
+    $mensaje_texto .= "\nARMOTOR - Sistema de Operación Vehicular\n";
+    $mensaje_texto .= "Este es un mensaje automático.\n";
+    
+    $asunto_email = "🚗 Nueva ruta iniciada: " . $placa . " — " . $nombre_conductor;
+    
+    return enviarCorreo($destinatario, $asunto_email, $mensaje_html, $mensaje_texto);
+}
