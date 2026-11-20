@@ -50,7 +50,8 @@ $modulos_admin = [
     ['url' => 'gestion_permisos/index.php', 'icono' => 'fa-calendar-check', 'nombre' => 'Gestión de Permisos', 'modulo' => 'Gestion Permisos'],
     ['url' => 'comercial/index.php', 'icono' => 'fa-handshake', 'nombre' => 'Comercial', 'modulo' => 'Comercial'],
     ['url' => 'pqrs/index.php', 'icono' => 'fa-bullhorn', 'nombre' => 'PQRSF', 'modulo' => 'PQRS'],
-    ['url' => 'operacion_vehicular/index.php', 'icono' => 'fa-car', 'nombre' => 'Operación Vehicular', 'modulo' => 'Operación Vehicular']
+    ['url' => 'operacion_vehicular/index.php', 'icono' => 'fa-car', 'nombre' => 'Operación Vehicular', 'modulo' => 'Operación Vehicular'],
+    ['url' => 'directorio/index.php', 'icono' => 'fa-address-book', 'nombre' => 'Directorio Corporativo', 'modulo' => 'Directorio Corporativo']
 ];
 
 // Obtener estadísticas
