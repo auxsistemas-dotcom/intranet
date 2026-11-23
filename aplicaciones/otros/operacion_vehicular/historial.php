@@ -379,6 +379,29 @@ function formatoMoneda($valor) {
         .badge-estado.cancelado { background: #fadbd8; color: #922b21; }
         .badge-estado.sin-datos { background: #ecf0f1; color: #7f8c8d; }
 
+        /* ✅ BOTÓN IMPRIMIR PDF */
+        .btn-imprimir {
+            background: #e67e22;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-imprimir:hover {
+            background: #d35400;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(230,126,34,0.3);
+        }
+
         /* INFO */
         .ruta-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
         .ruta-info-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #7f8c8d; }
@@ -539,7 +562,18 @@ function formatoMoneda($valor) {
                                     <span class="badge-tipo-vehiculo"><?php echo htmlspecialchars($ruta['tipo_vehiculo']); ?></span>
                                 <?php endif; ?>
                             </div>
-                            <span class="badge-estado <?php echo $estado_info['clase']; ?>"><?php echo $estado_info['texto']; ?></span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="badge-estado <?php echo $estado_info['clase']; ?>"><?php echo $estado_info['texto']; ?></span>
+                                <?php if ($ruta['estado'] === 'FINALIZADO'): ?>
+                                    <!-- ✅ BOTÓN IMPRIMIR PDF (Solo rutas finalizadas) -->
+                                    <a href="imprimir_ruta.php?id=<?php echo $ruta['id']; ?>" 
+                                       class="btn-imprimir" 
+                                       target="_blank"
+                                       title="Descargar PDF de esta ruta">
+                                        <i class="fas fa-print"></i> PDF
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
                         
                         <div class="ruta-info">

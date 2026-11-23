@@ -52,7 +52,7 @@ if ($ruta_id <= 0) {
 }
 
 // ============================================
-// ✅ OBTENER RUTA (con tipo_vehiculo + modalidad_vehiculo + km)
+// ✅ OBTENER RUTA
 // ============================================
 $stmt = $pdo->prepare("
     SELECT 
@@ -79,6 +79,23 @@ if (!$ruta) {
     $_SESSION['error'] = "❌ Ruta no encontrada";
     header('Location: ../rutas.php');
     exit();
+}
+
+// ============================================
+// ✅ OBTENER ACOMPAÑANTES
+// ============================================
+$acompanantes = [];
+try {
+    $stmt_acomp = $pdo->prepare("
+        SELECT nombre_acompanante, cargo_acompanante, sede_acompanante
+        FROM ope_ruta_acompanantes
+        WHERE ruta_id = ?
+        ORDER BY id
+    ");
+    $stmt_acomp->execute([$ruta_id]);
+    $acompanantes = $stmt_acomp->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("Error consultando acompañantes: " . $e->getMessage());
 }
 
 // ============================================
@@ -149,21 +166,16 @@ function calcularDuracion($fecha_salida, $fecha_finalizacion) {
     return empty($partes) ? 'Menos de 1 min' : implode(', ', $partes);
 }
 
-function textoMedioTransporte($medio, $otro = null) {
+function textoMedioTransporte($medio) {
     $mapa = [
         'PROPIO' => '🚗 Vehículo propio',
         'MOTO' => '🏍️ Motocicleta',
         'ORGANIZACION' => '🚙 Vehículo de la organización',
         'NODRIZA' => '🚐 Vehículo nodriza / niñera',
-        // Compatibilidad con valores antiguos
         'PUBLICO' => '🚌 Transporte público',
         'OTRO' => '📝 Otro'
     ];
-    $texto = $mapa[$medio] ?? $medio;
-    if ($medio === 'OTRO' && !empty($otro)) {
-        $texto .= ': ' . $otro;
-    }
-    return $texto;
+    return $mapa[$medio] ?? $medio;
 }
 
 function textoSiNo($valor) {
@@ -173,21 +185,89 @@ function textoSiNo($valor) {
 }
 
 // ============================================
-// ✅ DECODIFICAR CHECKLIST (JSON)
+// ✅ DECODIFICAR CHECKLIST (JSON) — CORREGIDO
 // ============================================
-$checklist_items = [
-    'llantas' => '🛞 Estado de llantas',
-    'interna' => '🔧 Revisión interna (aceite, frenos, refrigerante, batería, filtros)',
-    'externa' => '🚗 Revisión externa (lámina y pintura)',
-    'mantenimientos' => '📋 Mantenimientos al día',
-    'luces' => '💡 Luces y pito',
-    'kit' => '🧰 Kit de carretera'
+// El JSON tiene esta forma:
+//   { "tipo": "MOTO", "items": ["casco", "motor", ...] }
+// O si es viejo, puede ser solo:
+//   ["llantas", "interna", ...]
+
+$checklist_data = null;
+$tipo_checklist = 'CARRO';
+$items_marcados = [];
+
+if (!empty($ruta['checklist_vh'])) {
+    $decoded = json_decode($ruta['checklist_vh'], true);
+    
+    if (is_array($decoded)) {
+        // Nuevo formato: {tipo, items}
+        if (isset($decoded['items']) && is_array($decoded['items'])) {
+            $items_marcados = $decoded['items'];
+            $tipo_checklist = $decoded['tipo'] ?? 'CARRO';
+        } 
+        // Formato viejo: ["llantas", "interna", ...]
+        else {
+            $items_marcados = $decoded;
+            $tipo_checklist = 'CARRO'; // Asumir carro por compatibilidad
+        }
+    }
+}
+
+// Definición de los 3 checklists
+$todos_checklists = [
+    'CARRO' => [
+        'titulo' => '🚗 Checklist de Carro',
+        'items' => [
+            'llantas'  => '🛞 Estado de llantas',
+            'interna'  => '🔧 Revisión interna (aceite, frenos, refrigerante, batería, filtros)',
+            'externa'  => '🚗 Revisión externa (lámina y pintura)',
+            'luces'    => '💡 Luces y pito',
+            'kit'      => '🧰 Kit de carretera'
+        ]
+    ],
+    'MOTO' => [
+        'titulo' => '🏍️ Checklist de Moto',
+        'items' => [
+            'casco'           => '🪖 Casco reglamentario',
+            'motor'           => '⚙️ Funcionamiento del motor',
+            'kit_arrastre'    => '🔗 Kit de arrastre (piñones - cadena)',
+            'amortiguadores'  => '🔧 Amortiguadores delantero - trasero(s)',
+            'maniguetas'      => '🛞 Maniguetas (izquierda - derecha)',
+            'embrague'        => '🖐️ Ajuste de embrague',
+            'guayas'          => '🧵 Fundas y guayas',
+            'freno_del'       => '🛑 Ajuste de freno delantero',
+            'freno_tras'      => '🛑 Ajuste de freno trasero',
+            'liquido_freno'   => '💧 Nivel de líquido de freno',
+            'encendido'       => '🔑 Encendido (cran - eléctrico)',
+            'luces_pito'      => '💡 Luces / pito',
+            'rines'           => '⚙️ Rines (radios, aspas)',
+            'reposa_pies'     => '🦶 Reposa pies',
+            'llantas_presion' => '🛞 Llantas - presión de aire y estado'
+        ]
+    ],
+    'CAMION' => [
+        'titulo' => '🚚 Checklist de Camión (Nodriza)',
+        'items' => [
+            'general'           => '🚛 GENERAL: Carrocería, placa, entorno y parte inferior en buen estado, sin daños ni fugas.',
+            'llantas_ruedas'    => '🛞 LLANTAS Y RUEDAS: Llantas, labrado, presión, rines, pernos y repuesto en buen estado.',
+            'fluidos'           => '💧 FLUIDOS Y FUGAS: Niveles de fluidos adecuados y ausencia de fugas.',
+            'luces_electrico'   => '💡 LUCES Y ELÉCTRICO: Luces, direccionales, stops, tablero, cableado y pito funcionales.',
+            'visibilidad'       => '🪟 VISIBILIDAD Y CABINA: Vidrios, espejos, limpiaparabrisas, asientos y cinturones en buen estado.',
+            'mandos_mecanica'   => '⚙️ MANDOS Y MECÁNICA: Frenos, dirección, suspensión, ejes, cardán y sistema neumático funcionales.',
+            'seguridad'         => '🧯 SEGURIDAD: Extintor vigente, equipo de carretera, botiquín, kit de derrame, linterna y EPP disponibles.',
+            'estructura'        => '🏗️ ESTRUCTURA: Chasis, plataformas, torres, soldaduras, rampas, bisagras y seguros íntegros.',
+            'sistema_mecanico'  => '🔩 SISTEMA MECÁNICO: Guayas, poleas, rodamientos y anclajes en buen estado y funcionamiento.',
+            'sistema_hidraulico'=> '💦 SISTEMA HIDRÁULICO: Tanque, cilindros, vástagos, mangueras, acoples, mandos y válvulas sin daños ni fugas.',
+            'prueba_funcional'  => '🏗️ PRUEBA FUNCIONAL: Elevación y descenso sin carga, con movimientos uniformes y seguros.',
+            'antes_cargue'      => '📋 ANTES DEL CARGUE: Capacidad y dimensiones permitidas; zona de cargue firme, nivelada y delimitada.',
+            'despues_cargue'    => '📦 DESPUÉS DEL CARGUE: Carga distribuida y asegurada; plataformas bloqueadas, dimensiones reglamentarias y revisión 360°.'
+        ]
+    ]
 ];
 
-$checklist_respuestas = [];
-if (!empty($ruta['checklist_vh'])) {
-    $checklist_respuestas = json_decode($ruta['checklist_vh'], true) ?: [];
-}
+$checklist_actual = $todos_checklists[$tipo_checklist] ?? $todos_checklists['CARRO'];
+$checklist_items = $checklist_actual['items'];
+$checklist_titulo = $checklist_actual['titulo'];
 
 // ============================================
 // ✅ PREGUNTAS DE LA ENCUESTA
@@ -274,7 +354,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             padding: 20px 40px;
         }
         
-        /* ========== HEADER ========== */
         .header {
             background: #12232b;
             margin-bottom: 30px;
@@ -342,7 +421,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             transform: translateY(-2px);
         }
         
-        /* ========== MENSAJES ========== */
         .mensaje-exito {
             background: #d5f5e3;
             color: #1a7a3a;
@@ -370,7 +448,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             gap: 10px;
         }
         
-        /* ========== CARD ========== */
         .card {
             background: white;
             border-radius: 12px;
@@ -379,7 +456,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             margin-bottom: 20px;
         }
         
-        /* ========== ENCABEZADO RUTA ========== */
         .ruta-header-card {
             border-left: 6px solid #e67e22;
         }
@@ -458,7 +534,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         .badge-estado.finalizado { background: #d5f5e3; color: #1a7a3a; border: 1px solid #27ae60; }
         .badge-estado.cancelado { background: #fadbd8; color: #922b21; border: 1px solid #e74c3c; }
         
-        /* ========== TIMELINE DE FECHAS ========== */
         .timeline-fechas {
             display: flex;
             align-items: center;
@@ -533,7 +608,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             white-space: nowrap;
         }
         
-        /* ========== TÍTULOS DE SECCIÓN ========== */
         .seccion-titulo {
             font-size: 16px;
             color: #12232b;
@@ -548,7 +622,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         
         .seccion-titulo i { color: #173742; }
         
-        /* ========== DATOS GRID ========== */
         .datos-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -584,7 +657,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             font-weight: 400;
         }
         
-        /* ========== KM SECTION ========== */
         .km-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -599,20 +671,9 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             background: white;
         }
         
-        .km-card.salida {
-            border-color: #3498db;
-            background: #ebf5fb;
-        }
-        
-        .km-card.llegada {
-            border-color: #27ae60;
-            background: #eafaf1;
-        }
-        
-        .km-card.recorrido {
-            border-color: #e67e22;
-            background: #fef5e7;
-        }
+        .km-card.salida { border-color: #3498db; background: #ebf5fb; }
+        .km-card.llegada { border-color: #27ae60; background: #eafaf1; }
+        .km-card.recorrido { border-color: #e67e22; background: #fef5e7; }
         
         .km-card .km-icon {
             width: 45px;
@@ -658,19 +719,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             margin-top: 2px;
         }
         
-        /* ========== DESCRIPCIÓN ========== */
-        .descripcion-box {
-            padding: 15px;
-            background: #fafafa;
-            border-radius: 10px;
-            border: 1px solid #f0f0f0;
-            font-size: 14px;
-            line-height: 1.7;
-            color: #2c3e50;
-            white-space: pre-wrap;
-        }
-        
-        /* ========== CHECKLIST ========== */
         .checklist-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -702,7 +750,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             font-size: 14px;
         }
         
-        /* ========== ENCUESTA ========== */
         .encuesta-lista {
             display: flex;
             flex-direction: column;
@@ -770,22 +817,10 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             white-space: nowrap;
         }
         
-        .encuesta-item .respuesta.ok {
-            background: #27ae60;
-            color: white;
-        }
+        .encuesta-item .respuesta.ok { background: #27ae60; color: white; }
+        .encuesta-item .respuesta.mal { background: #e74c3c; color: white; }
+        .encuesta-item .respuesta.neutro { background: #ecf0f1; color: #7f8c8d; }
         
-        .encuesta-item .respuesta.mal {
-            background: #e74c3c;
-            color: white;
-        }
-        
-        .encuesta-item .respuesta.neutro {
-            background: #ecf0f1;
-            color: #7f8c8d;
-        }
-        
-        /* ========== OBSERVACIONES ========== */
         .observaciones-box {
             padding: 15px 18px;
             background: #fef3c7;
@@ -797,7 +832,59 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             white-space: pre-wrap;
         }
         
-        /* ========== BOTONES ACCIÓN ========== */
+        .acompanantes-lista {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+        
+        .acompanante-card {
+            padding: 12px 15px;
+            background: #e8f4f8;
+            border-left: 3px solid #3498db;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .acompanante-card .icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #3498db;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        
+        .acompanante-card .info {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .acompanante-card .nombre {
+            font-weight: 600;
+            color: #12232b;
+            font-size: 13px;
+        }
+        
+        .acompanante-card .detalle {
+            font-size: 11px;
+            color: #5d6d7e;
+        }
+        
+        .sin-acompanantes {
+            text-align: center;
+            padding: 20px;
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 13px;
+        }
+        
         .acciones-seccion {
             display: flex;
             gap: 12px;
@@ -830,27 +917,12 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             font-family: 'Poppins', sans-serif;
         }
         
-        .btn-ver-conductor {
-            background: #3498db;
-            color: white;
-        }
+        .btn-ver-conductor { background: #3498db; color: white; }
+        .btn-ver-conductor:hover { background: #2980b9; transform: translateY(-2px); }
         
-        .btn-ver-conductor:hover {
-            background: #2980b9;
-            transform: translateY(-2px);
-        }
+        .btn-ver-vehiculo { background: #8e44ad; color: white; }
+        .btn-ver-vehiculo:hover { background: #732d91; transform: translateY(-2px); }
         
-        .btn-ver-vehiculo {
-            background: #8e44ad;
-            color: white;
-        }
-        
-        .btn-ver-vehiculo:hover {
-            background: #732d91;
-            transform: translateY(-2px);
-        }
-        
-        /* ========== MODAL ELIMINAR ========== */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0;
@@ -954,7 +1026,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
 </head>
 <body>
 
-<!-- ========== HEADER ========== -->
 <header class="header">
     <div class="container">
         <div class="logo">
@@ -974,7 +1045,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
 
 <div class="container">
     
-    <!-- ===== MENSAJES ===== -->
     <?php if ($mensaje): ?>
         <div class="mensaje-exito" id="msgExito">
             <i class="fas fa-check-circle"></i>
@@ -989,7 +1059,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     <?php endif; ?>
     
-    <!-- ===== ENCABEZADO RUTA ===== -->
+    <!-- ENCABEZADO RUTA -->
     <div class="card ruta-header-card estado-<?php echo strtolower(str_replace('_', '-', $ruta['estado'])); ?>">
         <div class="ruta-header-top">
             <div class="ruta-titulo">
@@ -1022,7 +1092,6 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             </div>
         </div>
         
-        <!-- Timeline de fechas -->
         <div class="timeline-fechas">
             <div class="timeline-item">
                 <div class="timeline-icon salida">
@@ -1077,7 +1146,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
-    <!-- ===== KILOMETRAJE ===== -->
+    <!-- KILOMETRAJE -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-tachometer-alt"></i>
@@ -1085,11 +1154,8 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
         
         <div class="km-grid">
-            <!-- Km salida -->
             <div class="km-card salida">
-                <div class="km-icon">
-                    <i class="fas fa-sign-out-alt"></i>
-                </div>
+                <div class="km-icon"><i class="fas fa-sign-out-alt"></i></div>
                 <div class="km-label">Km Salida</div>
                 <?php if ($km_salida !== null): ?>
                     <div class="km-valor"><?php echo number_format($km_salida, 0, ',', '.'); ?></div>
@@ -1099,11 +1165,8 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
                 <?php endif; ?>
             </div>
             
-            <!-- Km llegada -->
             <div class="km-card llegada">
-                <div class="km-icon">
-                    <i class="fas fa-sign-in-alt"></i>
-                </div>
+                <div class="km-icon"><i class="fas fa-sign-in-alt"></i></div>
                 <div class="km-label">Km Llegada</div>
                 <?php if ($km_llegada !== null): ?>
                     <div class="km-valor"><?php echo number_format($km_llegada, 0, ',', '.'); ?></div>
@@ -1113,11 +1176,8 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
                 <?php endif; ?>
             </div>
             
-            <!-- Km recorridos -->
             <div class="km-card recorrido">
-                <div class="km-icon">
-                    <i class="fas fa-road"></i>
-                </div>
+                <div class="km-icon"><i class="fas fa-road"></i></div>
                 <div class="km-label">Km Recorridos</div>
                 <?php if ($km_recorridos !== null): ?>
                     <div class="km-valor"><?php echo number_format($km_recorridos, 0, ',', '.'); ?></div>
@@ -1130,7 +1190,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
-    <!-- ===== DATOS DEL VIAJE ===== -->
+    <!-- DATOS DEL VIAJE -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-route"></i>
@@ -1159,16 +1219,17 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
                 </div>
             </div>
             
+            <!-- ✅ CORREGIDO: Sin medio_transporte_otro -->
             <div class="dato-item">
                 <div class="dato-label">Medio de transporte</div>
                 <div class="dato-valor">
-                    <?php echo textoMedioTransporte($ruta['medio_transporte'], $ruta['medio_transporte_otro']); ?>
+                    <?php echo textoMedioTransporte($ruta['medio_transporte']); ?>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- ===== DATOS DEL CONDUCTOR ===== -->
+    <!-- DATOS DEL CONDUCTOR -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-user-tie"></i>
@@ -1206,7 +1267,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
-    <!-- ===== DATOS DEL VEHÍCULO ===== -->
+    <!-- DATOS DEL VEHÍCULO -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-car"></i>
@@ -1255,21 +1316,65 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
             </div>
         <?php else: ?>
             <p style="color: #95a5a6; font-style: italic; text-align: center; padding: 20px;">
-                <i class="fas fa-info-circle"></i> No se utilizó un vehículo de la organización en esta ruta
+                <i class="fas fa-info-circle"></i> No se utilizó un vehículo en esta ruta
             </p>
         <?php endif; ?>
     </div>
     
-    <!-- ===== CHECKLIST DEL VEHÍCULO ===== -->
+    <!-- ACOMPAÑANTES -->
+    <div class="card">
+        <div class="seccion-titulo">
+            <i class="fas fa-users"></i>
+            Acompañantes
+            <?php if (count($acompanantes) > 0): ?>
+                <span style="background: #3498db; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-left: auto;">
+                    <?php echo count($acompanantes); ?>
+                </span>
+            <?php endif; ?>
+        </div>
+        
+        <?php if (count($acompanantes) > 0): ?>
+            <div class="acompanantes-lista">
+                <?php foreach ($acompanantes as $a): ?>
+                    <div class="acompanante-card">
+                        <div class="icon">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="info">
+                            <span class="nombre"><?php echo htmlspecialchars($a['nombre_acompanante'] ?? ''); ?></span>
+                            <span class="detalle">
+                                <?php 
+                                $partes = [];
+                                if (!empty($a['cargo_acompanante'])) $partes[] = $a['cargo_acompanante'];
+                                if (!empty($a['sede_acompanante'])) $partes[] = $a['sede_acompanante'];
+                                echo htmlspecialchars(implode(' · ', $partes) ?: 'Sin cargo');
+                                ?>
+                            </span>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <div class="sin-acompanantes">
+                <i class="fas fa-user-slash"></i>
+                <p>Esta ruta no tiene acompañantes registrados</p>
+            </div>
+        <?php endif; ?>
+    </div>
+    
+    <!-- CHECKLIST DEL VEHÍCULO -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-clipboard-check"></i>
             Revisión del vehículo antes de viajar
+            <span style="margin-left: auto; font-size: 13px; color: #7f8c8d; font-weight: 500;">
+                <?php echo htmlspecialchars($checklist_titulo); ?>
+            </span>
         </div>
         
         <div class="checklist-grid">
             <?php foreach ($checklist_items as $key => $texto): 
-                $completado = in_array($key, $checklist_respuestas);
+                $completado = in_array($key, $items_marcados);
             ?>
                 <div class="checklist-item <?php echo $completado ? 'completo' : 'pendiente'; ?>">
                     <i class="fas <?php echo $completado ? 'fa-check-circle' : 'fa-times-circle'; ?>"></i>
@@ -1279,7 +1384,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
-    <!-- ===== ENCUESTA DE SEGURIDAD VIAL ===== -->
+    <!-- ENCUESTA -->
     <div class="card">
         <div class="seccion-titulo">
             <i class="fas fa-heartbeat"></i>
@@ -1317,7 +1422,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     </div>
     
-    <!-- ===== OBSERVACIONES DE CIERRE ===== -->
+    <!-- OBSERVACIONES -->
     <?php if (!empty($ruta['observaciones_cierre'])): ?>
         <div class="card">
             <div class="seccion-titulo">
@@ -1331,7 +1436,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
         </div>
     <?php endif; ?>
     
-    <!-- ===== BOTONES ACCIÓN ===== -->
+    <!-- BOTONES ACCIÓN -->
     <div class="card">
         <div class="acciones-seccion">
             <a href="rutas.php" class="btn-accion btn-volver">
@@ -1355,7 +1460,7 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
     </div>
 </div>
 
-<!-- ========== MODAL ELIMINAR ========== -->
+<!-- MODAL ELIMINAR -->
 <div class="modal-overlay" id="modalEliminar">
     <div class="modal-content">
         <div class="modal-icon">
@@ -1385,36 +1490,32 @@ $duracion = calcularDuracion($ruta['fecha_salida'], $ruta['fecha_finalizacion'])
 </div>
 
 <script>
-// ============================================
-// MODAL ELIMINAR
-// ============================================
-function abrirModalEliminar() {
-    document.getElementById('modalEliminar').classList.add('active');
-}
-
-function cerrarModalEliminar() {
-    document.getElementById('modalEliminar').classList.remove('active');
-}
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') cerrarModalEliminar();
-});
-
-document.addEventListener('click', function(e) {
-    const modal = document.getElementById('modalEliminar');
-    if (e.target === modal) cerrarModalEliminar();
-});
-
-// Auto-ocultar mensaje de éxito
-document.addEventListener('DOMContentLoaded', function() {
-    const msgExito = document.getElementById('msgExito');
-    if (msgExito) {
-        setTimeout(function() {
-            msgExito.style.opacity = '0';
-            setTimeout(function() { msgExito.style.display = 'none'; }, 500);
-        }, 3000);
+    function abrirModalEliminar() {
+        document.getElementById('modalEliminar').classList.add('active');
     }
-});
+
+    function cerrarModalEliminar() {
+        document.getElementById('modalEliminar').classList.remove('active');
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') cerrarModalEliminar();
+    });
+
+    document.addEventListener('click', function(e) {
+        const modal = document.getElementById('modalEliminar');
+        if (e.target === modal) cerrarModalEliminar();
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const msgExito = document.getElementById('msgExito');
+        if (msgExito) {
+            setTimeout(function() {
+                msgExito.style.opacity = '0';
+                setTimeout(function() { msgExito.style.display = 'none'; }, 500);
+            }, 3000);
+        }
+    });
 </script>
 
 </body>
